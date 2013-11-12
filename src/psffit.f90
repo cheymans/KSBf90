@@ -10,7 +10,6 @@
 ! and cite Heymans et al (Mon.Not.Roy.Astron.Soc. 368 (2006) 1323-1339)
 ! in any publications that make use of this code.
 ! 
-! HEllow Edit
 !-------------------------------------------------------------
 Module Main
 
@@ -439,17 +438,19 @@ end Program psffit
 ! With thanks to Nick Kaiser for the original imcat C version 
 ! of the getshape subroutine.
 !
+!Edited on the 12th Nov 2013 by Christopher Duncan, to add the PSF measurement Eqaution (50) of RRG. 
 !****************************************************************
 
-Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh)
+Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh, q)
 Use Main
 Implicit none
 
 real*4         :: xs,ys,rwindow,fluxs
 integer        :: istar,gsflag
 real*4         :: xedge,yedge
+real*4,intent(out)         :: q(1:2,1:2)
 
-real*4                        :: q(0:1,0:1), denom
+real*4                        :: denom
 integer                       :: i0, j0, i, j, di, dj, rmax, l, m
 real*4                        :: r, dx, dy
 real*4                        :: W, Wp, Wpp, fc, DD, DD1, DD2
@@ -458,6 +459,10 @@ real*4                        :: em(0:1), eh(0:1)
 integer                       :: R_MAX_FACTOR
 integer                       :: negflux
 integer                       :: N1, N2
+
+!--RRG Declarations---!
+real*4::q0, q4(2,2,2,2)
+real*4, allocatable, dimension(:)::obj_Grid_x, Obj_Grid_y
 
 real*4                  :: xim(0:1)
 real*4                  :: d(0:1)
@@ -495,6 +500,23 @@ psh = 0.0
 q = 0.0
 d = 0.0
    
+q0 = 0.
+q4 = 0.
+
+
+!--Implementation of CAJD methods for calculation of moments--!
+!-Unused as requires Intensity Map to be defined over a grid, howeve this grid could be easily populated-!
+!--Define Object Grid, used in my subroutines. To keep the Guassian Width defined in the same way as below, Grids should have dx = dy = 1--!
+!---NOTE, THIS IS NOT NORMALISED--!
+allocate(Obj_Grid_x(size(Object,1))); allocate(Obj_Grid_y(size(Object,2)))
+do i = 1, maxval( (/ size(Obj_Grid_x), size(Obj_Grid_y) /)
+   if( i <= size(Obj_Grid_x) ) Obj_Grid_x(i) = i
+   if( i <= size(Obj_Grid_y) ) Obj_Grid_y(i) = i
+end do
+call Weighted_Intensity_Moment_0(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width = rwindow/r, q0)
+call Weighted_Intensity_Moment_2(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, q, Normalisation == .false.)
+call Weighted_Intensity_Moment_4(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, q4, Normalisation = .false.)
+
 if(rmax>xedge.or.rmax>yedge)then
    gsflag = 1
    go to 88
@@ -525,10 +547,17 @@ else
             
             d(0) = d(0) + (W * fc * dx)
             d(1) = d(1) + (W * fc * dy)
-            q(0,0) = q(0,0) + (fc * W * dx * dx)
-            q(1,1) = q(1,1) + (fc * W * dy * dy)
-            q(0,1) = q(0,1) + (fc * W * dx * dy)
-            q(1,0) = q(1,0) + (fc * W * dx * dy)
+
+!!$            q(1,1) = q(1,1) + (fc * W * dx * dx)
+!!$            q(2,2) = q(2,2) + (fc * W * dy * dy)
+!!$            q(1,2) = q(1,2) + (fc * W * dx * dy)
+!!$            q(2,1) = q(2,1) + (fc * W * dx * dy)
+
+            !--Chris changes--!
+!            q0 = q0 + (fc * W)
+            !-----------------!
+
+
             DD = di * di + dj * dj
             DD1 = dj * dj - di * di
             DD2 = 2 * di * dj
@@ -564,11 +593,11 @@ else
    
    
    ! calculate ellipticities
-   denom = q(0,0) + q(1,1)                 
+   denom = q(1,1) + q(2,2)                 
    
    if (denom > 0)then
-      e(0) = (q(0,0) - q(1,1)) / denom
-      e(1) = (q(0,1) + q(1,0)) / denom
+      e(0) = (q(1,1) - q(2,2)) / denom
+      e(1) = (q(1,2) + q(2,1)) / denom
       em = em / denom
       eh = eh / denom
       eh = eh + (2 * e)
@@ -584,7 +613,13 @@ else
    end if
 end if
 
-88 continue
+!--Renormalise--!
+q = q/q0
+q4 = q4/q0
+
+!88 continue
+
+
 
 !write(*,*) 'e',(e(i),i=0,1),gsflag
 !write(*,*) (d(i),i=0,1)
