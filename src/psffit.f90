@@ -516,6 +516,8 @@ end do
 call Weighted_Intensity_Moment_0(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width = rwindow/r, q0)
 call Weighted_Intensity_Moment_2(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, q, Normalisation == .false.)
 call Weighted_Intensity_Moment_4(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, q4, Normalisation = .false.)
+deallocate(Obj_Grid_x, Obj_Grid_y)
+
 
 if(rmax>xedge.or.rmax>yedge)then
    gsflag = 1
