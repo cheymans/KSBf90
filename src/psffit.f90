@@ -73,7 +73,7 @@ real*4 :: xccd,yccd
 
 ! in/out files
 character*250 filein, fileout,filecrit, filefits, fileparam
-character*500 line
+character*1500 line
 
 ! data
 real*4, dimension(1:1000)  :: catalogue
@@ -117,10 +117,14 @@ do i=1,narg
       print *,''
       print *,'       Defaults: '
       print *,'       -pgopen /xwin  Choose the output of the plots  '
+      print *,'       -nim 1  Single image is the default            '
+      print *,' If nim>1 then -image and -in should point to lists   '
       STOP
 
    case ('-in')
       filein=arg
+   case ('-nimage')
+      read(arg,*) nim
    case ('-image')
       filefits=arg
    case ('-crit')
@@ -156,7 +160,8 @@ open(44,file=filein,status='old')
 open(33,file=filecrit,status='old')
 open(45,file=fileout,status='unknown')
 
-read(33,*) nstars,frl,frh,fwhml,fwhmh,magl,magh,frmax
+!read(33,*) nstars,frl,frh,fwhml,fwhmh,magl,magh,frmax
+read(33,*) magl,magh,frl,frh,fwhml,fwhmh!,frmax
 
 ! read in the stars based on the stellar selection
 ! criteria from findstars
@@ -165,7 +170,10 @@ j = 0
 do while(j.le.imax)
    read(44,'(a)',end=23) line
    if(line(1:1).ne.'#')then
-      read(line(1:500),*) (catalogue(k),k=1,intot)
+      read(line(1:1500),*) (catalogue(k),k=1,intot)
+      
+      write(*,*) catalogue(imag), ifwhm, catalogue(ifwhm)
+
 
       if(catalogue(imag)< magh.and.catalogue(imag)> magl.and.&
          catalogue(ifwhm)< fwhmh.and.catalogue(ifwhm)> fwhml.and.&
@@ -1244,7 +1252,7 @@ implicit none
 
 character*150 arg,opt
 character*250 fileparam
-character*500 line
+character*1500 line
 integer :: i
 
 !read parameter file
