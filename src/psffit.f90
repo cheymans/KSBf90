@@ -60,7 +60,7 @@ Program psffit
 use main
 implicit none
 
-integer:: i,j,k,ii,jj,irg
+integer:: i,j,k,ii,jj,irg,im, nprev,nim
 
 character*150 arg,opt
 integer iargc,narg
@@ -71,7 +71,7 @@ integer :: nsc
 real*4 :: xccd,yccd
 
 ! in/out files
-character*250 filein, fileout,filecrit, filefits, fileparam
+character*250 filein, fileout,filecrit, filefits, fileparam,imfile,catfile
 character*1500 line
 
 ! data
@@ -121,11 +121,11 @@ do i=1,narg
       STOP
 
    case ('-in')
-      filein=arg
+      catfile=arg
    case ('-nimage')
       read(arg,*) nim
    case ('-image')
-      filefits=arg
+      imfile=arg
    case ('-crit')
       filecrit=arg
    case ('-param')
@@ -155,164 +155,184 @@ else
    stop
 end if
 
-open(44,file=filein,status='old')
-open(33,file=filecrit,status='old')
-open(45,file=fileout,status='unknown')
-
-!read(33,*) nstars,frl,frh,fwhml,fwhmh,magl,magh,frmax
-read(33,*) magl,magh,frl,frh,fwhml,fwhmh!,frmax
-
-! read in the stars based on the stellar selection
-! criteria from findstars
-
-j = 0
-do while(j.le.imax)
-   read(44,'(a)',end=23) line
-   if(line(1:1).ne.'#')then
-      read(line(1:1500),*) (catalogue(k),k=1,intot)
-      
-      write(*,*) catalogue(imag), ifwhm, catalogue(ifwhm)
-
-
-      if(catalogue(imag)< magh.and.catalogue(imag)> magl.and.&
-         catalogue(ifwhm)< fwhmh.and.catalogue(ifwhm)> fwhml.and.&
-         catalogue(ifr)< frh.and.catalogue(ifr)> frl)then
-         
-         j = j + 1
-         x(j) = catalogue(ix)
-         y(j) = catalogue(iy)
-         mag(j) =  catalogue(imag)
-         fr(j) = catalogue(ifr)
-         fwhm(j) = catalogue(ifwhm)
-         flux(j) = catalogue(iflux)
-
-         write(52,*) x(j),y(j),mag(j), fr(j)
-
-      end if
-   end if
-end do
-write(*,*) 'WARNING: star list longer than imax in psffit.f90'
-write(*,*) 'WARNING: only using the first 1000 stars - modify imax in code'
-
-23 continue
-nstars = j
-write(*,*) nstars,' stars selected'
-! set binning scale for the varying weight function
-rgbin = frh/rgmax
-
-! open the image files
-call openfits(filefits)
-
-!calculate CCD chip widths if image is made of multiple CCD chips
-xccd = naxes(1)*1.0/nchipx
-yccd = naxes(2)*1.0/nchipy
-
 ! open pgplot window
 call pgopen(plot)
 call pgsch(1.8)
 call pgslw(2)
 call pgsubp(2,1)
 
-do i = 1,nstars
+open(45,file=fileout,status='unknown')
+open(33,file=filecrit,status='old')
+!read(33,*) nstars,frl,frh,fwhml,fwhmh,magl,magh,frmax
+read(33,*) magl,magh,frl,frh,fwhml,fwhmh!,frmax
+! set binning scale for the varying weight function
+!rgmax set in KSBf90.param
+rgbin = frh/rgmax
 
-   ! set CCD chip
-   ixchip(i) = int(x(i)/xccd) + 1
-   iychip(i) = int(y(i)/yccd) + 1
+write(*,*) 'NIM', nim
 
-   ! select postage stamp from fits image
-   ! deal with edges
+if(nim==1)then  ! command line files link directly to catalogue and image
+   filein = catfile
+   filefits = imfile
+else ! command line links to files which contain links to the cats and images
+   open(66,file=catfile,status='old')
+   open(77,file=imfile,status='old')
+end if
 
-   fpixels(1) = max(1,nint(x(i) - m_size/2)) 
-   fpixels(2) = max(1,nint(y(i) - n_size/2)) 
-   lpixels(1) = min(nint(x(i) + m_size/2 - 1),naxes(1))
-   lpixels(2) = min(nint(y(i) + n_size/2 - 1),naxes(2))
+j = 0  ! star counter - zeroed outwith image loop
+nprev = 0  ! cumulative number of stars in previous images
 
-   mpix = lpixels(1) - fpixels(1) + 1 
-   npix = lpixels(2) - fpixels(2) + 1
+do im = 1,nim
 
-   allocate (obj(0:mpix-1,0:npix-1))
-
-   ! FITSIO routine to extract postage stamp of the star
-
-! for bitpix = -32 use ftgsve
-! for bitpix = -64 use ftgsvd 
-
-   call ftgsve(unit,group,naxis,naxes,fpixels,lpixels,incs, &
-               nullval,obj,anyf,status)
-
-   ! Check for any error, and if so print out error messages.
-      
-   if (status .gt. 0)then
-      write(*,*) filefits,'readobj error problem, fitsio status = ', status
-      write(*,*) 'Does this file exist?'
-      stop
+   if(nim>1)then
+      read(66,'(a)') filein
+      read(77,'(a)') filefits
    end if
+   
+   open(44,file=filein,status='old')
 
-   ! put all objects in a regular sized grid and subtract off 
-   ! flat background noise set by back parameter in KSBparam.f90
+   ! read in the stars based on the stellar selection
+   ! criteria from findstars
+   
+   do while(j.le.imax)
+      read(44,'(a)',end=23) line
+      if(line(1:1).ne.'#')then
+         read(line(1:1500),*) (catalogue(k),k=1,intot)
+         
+         write(*,*) catalogue(imag), ifwhm, catalogue(ifwhm)
+                  
+         if(catalogue(imag)< magh.and.catalogue(imag)> magl.and.&
+              catalogue(ifwhm)< fwhmh.and.catalogue(ifwhm)> fwhml.and.&
+              catalogue(ifr)< frh.and.catalogue(ifr)> frl)then
+            
+            j = j + 1
+            x(j) = catalogue(ix)
+            y(j) = catalogue(iy)
+            mag(j) =  catalogue(imag)
+            fr(j) = catalogue(ifr)
+            fwhm(j) = catalogue(ifwhm)
+            flux(j) = catalogue(iflux)
+            
+         end if
+      end if
+   end do
+   write(*,*) 'WARNING: star list longer than imax in psffit.f90'
+   write(*,*) 'WARNING: only using the first 1000 stars - modify imax in code'
 
-   object = 0.0
-   do ii = 0,mpix-1
-      do jj = 0,npix-1
-         object(ii,jj) = obj(ii,jj) - back   
+23 continue
+   nstars = j
+   write(*,*) nstars-nprev,' stars selected in image', im
+
+   ! open the image files
+   call openfits(filefits)
+   
+   !calculate CCD chip widths if image is made of multiple CCD chips
+   xccd = naxes(1)*1.0/nchipx
+   yccd = naxes(2)*1.0/nchipy
+
+   do i = nprev+1,nstars
+      
+      ! set CCD chip
+      ixchip(i) = int(x(i)/xccd) + 1
+      iychip(i) = int(y(i)/yccd) + 1
+      
+      ! select postage stamp from fits image
+      ! deal with edges
+      
+      fpixels(1) = max(1,nint(x(i) - m_size/2)) 
+      fpixels(2) = max(1,nint(y(i) - n_size/2)) 
+      lpixels(1) = min(nint(x(i) + m_size/2 - 1),naxes(1))
+      lpixels(2) = min(nint(y(i) + n_size/2 - 1),naxes(2))
+      
+      mpix = lpixels(1) - fpixels(1) + 1 
+      npix = lpixels(2) - fpixels(2) + 1
+      
+      allocate (obj(0:mpix-1,0:npix-1))
+      
+      ! FITSIO routine to extract postage stamp of the star
+      
+      ! for bitpix = -32 use ftgsve
+      ! for bitpix = -64 use ftgsvd 
+      
+      call ftgsve(unit,group,naxis,naxes,fpixels,lpixels,incs, &
+           nullval,obj,anyf,status)
+      
+      ! Check for any error, and if so print out error messages.
+      
+      if (status .gt. 0)then
+         write(*,*) filefits,'readobj error problem, fitsio status = ', status
+         write(*,*) 'Does this file exist?'
+         stop
+      end if
+      
+      ! put all objects in a regular sized grid and subtract off 
+      ! flat background noise set by back parameter in KSBparam.f90
+      
+      object = 0.0
+      do ii = 0,mpix-1
+         do jj = 0,npix-1
+            object(ii,jj) = obj(ii,jj) - back   
+         end do
+      end do
+      
+      deallocate (obj)
+      
+      !   uncomment the following to see 2D images of the selected stars
+      !   call plotarray(m_size,n_size,object)
+      
+      !   now loop through different weighting radii to see how the PSF
+      !   ellipticity of object (:) varies with size
+      
+      do irg = 1,rgmax
+         
+         rgstar(irg) = frh + (irg-1)*rgbin
+         rg(i) = rgstar(irg)
+         
+         xc = x(i) - fpixels(1) 
+         yc = y(i) - fpixels(2) 
+         xedge = min(xc, naxes(1)-x(i))
+         yedge = min(yc, naxes(2)-y(i))
+         
+         ! getshape is the nuts and bolts of KSB
+         
+         call getshape(xc,yc,flux(i),rg(i),flag(i,irg),xedge,yedge,e,psm,psh)
+         
+         ! uncomment the following to see raw ellipticities plotted
+         !call plotit(100000,x(i),y(i),e(0),e(1))
+         
+         det = 1.0/(psm(0,0)*psm(1,1) - psm(0,1)*psm(1,0))
+         
+         Psminv(1) = det * psm(1,1)
+         Psminv(2) = -1.0 * det * psm(0,1)
+         Psminv(3) = -1.0 * det * psm(1,0)
+         Psminv(4) = det * psm(0,0)
+         
+         pstar(i,1,irg) = Psminv(1) * e(0) + Psminv(2) * e(1)
+         pstar(i,2,irg) = Psminv(3) * e(0) + Psminv(4) * e(1)
+         
+         ! uncomment the following to see p's plotted
+         !call plotit(100,x(i),y(i),pstar(i,1,irg),pstar(i,2,irg))
+         
+         estar(i,1,irg) = e(0)
+         estar(i,2,irg) = e(1)
+         psmstar(i,1,irg) = psm(0,0)
+         psmstar(i,2,irg) = psm(1,0)
+         psmstar(i,3,irg) = psm(0,1)
+         psmstar(i,4,irg) = psm(1,1)
+         
+         shsmfact(i,irg) = (psh(0,0) + psh(1,1))/(psm(0,0) + psm(1,1))
+         
       end do
    end do
-
-   deallocate (obj)
-
-!   uncomment the following to see 2D images of the selected stars
-!   call plotarray(m_size,n_size,object)
-
-!   now loop through different weighting radii to see how the PSF
-!   ellipticity of object (:) varies with size
-
-   do irg = 1,rgmax
-
-      rgstar(irg) = frh + (irg-1)*rgbin
-      rg(i) = rgstar(irg)
-      
-      xc = x(i) - fpixels(1) 
-      yc = y(i) - fpixels(2) 
-      xedge = min(xc, naxes(1)-x(i))
-      yedge = min(yc, naxes(2)-y(i))
-      
-      ! getshape is the nuts and bolts of KSB
-
-      call getshape(xc,yc,flux(i),rg(i),flag(i,irg),xedge,yedge,e,psm,psh)
-      
-      ! uncomment the following to see raw ellipticities plotted
-      !call plotit(100000,x(i),y(i),e(0),e(1))
-
-      det = 1.0/(psm(0,0)*psm(1,1) - psm(0,1)*psm(1,0))
-                  
-      Psminv(1) = det * psm(1,1)
-      Psminv(2) = -1.0 * det * psm(0,1)
-      Psminv(3) = -1.0 * det * psm(1,0)
-      Psminv(4) = det * psm(0,0)
-                  
-      pstar(i,1,irg) = Psminv(1) * e(0) + Psminv(2) * e(1)
-      pstar(i,2,irg) = Psminv(3) * e(0) + Psminv(4) * e(1)
-
-      ! uncomment the following to see p's plotted
-      !call plotit(100,x(i),y(i),pstar(i,1,irg),pstar(i,2,irg))
-
-      estar(i,1,irg) = e(0)
-      estar(i,2,irg) = e(1)
-      psmstar(i,1,irg) = psm(0,0)
-      psmstar(i,2,irg) = psm(1,0)
-      psmstar(i,3,irg) = psm(0,1)
-      psmstar(i,4,irg) = psm(1,1)
-
-      shsmfact(i,irg) = (psh(0,0) + psh(1,1))/(psm(0,0) + psm(1,1))
-      
-   end do
+   ! reset star counter and move on to next image
+   nprev = nstars
 end do
-   
+
 ! psffit makes a polynomial fit to the PSF distribution
 shsm = 20.0 ! give shsm an average value - properly set later
-
+   
 do irg = 1,rgmax
-
+   
    call pgsci(1)
    call pgenv(1.0,naxes(1)*1.0,1.0,naxes(2)*1.0,1,0)
    
@@ -322,9 +342,9 @@ do irg = 1,rgmax
    else
       toplabel = 'radius = stellar flux radius'
    end if
-
+   
    call pglab('x','y',toplabel)
-
+   
    do i = 1,nstars
       p1(i) = pstar(i,1,irg)
       p2(i) = pstar(i,2,irg)
@@ -335,7 +355,7 @@ do irg = 1,rgmax
          fitflag(i) = flag(i,irg)
       end if
    end do
-
+   
    do ix = 1,nchipx
       do iy = 1,nchipy
          
@@ -346,7 +366,7 @@ do irg = 1,rgmax
                chipflag(i) = 1
             end if
          end do
-
+         
          ! uncomment to draw a histogram of p1 and p2
          !call pghist(nstars, p1, -0.1, 0.1, 20, 0)
          !call pgsci(2)
@@ -1257,6 +1277,7 @@ status = 0
 readwrite=0
 
 unit = 99
+write(*,*) filename
 call ftopen(unit,filename,readwrite,blocksize,status)
 
 ! Determine the size of the image.
