@@ -1,17 +1,10 @@
 #!/bin/sh
 
-<<<<<<< HEAD
 KSBDIR=/home/cech/KSBf90
 DATADIR=/disk1/ps1/cech/STAGES/RRG_update/images/scifits/
 STARCATDIR=/disk1/ps1/cech/STAGES/RRG_update/images/stars/starcats/
 CATDIR=/disk1/ps1/cech/STAGES/RRG_update/images/SExcats/
 OUTDIR=/disk1/ps1/cech/STAGES/RRG_update/OUTDATA/PSF
-=======
-KSBDIR=/home/cajd/Size_Measurements/src/
-DATADIR=/disk2/cech/STAGES_image_analysis/images/scifits/
-STARCATDIR=/disk2/cech/STAGES_image_analysis/stars/starcats/
-CATDIR=/disk2/cech/STAGES_image_analysis/images/SExcats/
->>>>>>> 32bf0a34db9681b84d0e393d5a509fd884e1c201
 fitshead=a901-
 fitstail=-sci.fits
 starcattail=.chosen_stars.cat
@@ -56,7 +49,3 @@ do
 
 done
 
-<<<<<<< HEAD
-=======
-$KSBDIR/psffit.a -nimage 1 -image /home/cech/a901-01-sci.fits -in /home/cajd/Size_Measurements/test_data/a901-01-ab.cat -crit  /home/cajd/Size_Measurements/test_data/a901-01.chosen_stars.cat -param KSBf90.param -pgopen /xwin -out PSF.dat
->>>>>>> 32bf0a34db9681b84d0e393d5a509fd884e1c201
