@@ -1,31 +1,51 @@
 #!/bin/sh
 
 KSBDIR=/home/cech/KSBf90
-DATADIR=/disk2/cech/STAGES_image_analysis/images/scifits/
-STARCATDIR=/disk2/cech/STAGES_image_analysis/stars/starcats/
-CATDIR=/disk2/cech/STAGES_image_analysis/images/SExcats/
+DATADIR=/disk1/ps1/cech/STAGES/RRG_update/images/scifits/
+STARCATDIR=/disk1/ps1/cech/STAGES/RRG_update/images/stars/starcats/
+CATDIR=/disk1/ps1/cech/STAGES/RRG_update/images/SExcats/
+OUTDIR=/disk1/ps1/cech/STAGES/RRG_update/OUTDATA/PSF
 fitshead=a901-
 fitstail=-sci.fits
 starcattail=.chosen_stars.cat
 sexcattail=-ab.cat
 
-# first create image lists
+# first create image lists in 7 groups 
+# Groups based on HST observation dates (see Fig 1 of Heymans et al 2008)
 
-#for file in $DATADIR/*
-#do
-#echo $file 
-#done > image.list
+for obs_group in 1 #2 3 4 5 6 7
+do 
 
-#for file in $CATDIR/*$sexcattail
-#do 
-#echo $file
-#done > cat.list
+    # write out image location
 
-i=01
-#$KSBDIR/psffit.a -nimage 1 -image $DATADIR/$fitshead$i$fitstail -in $CATDIR/$fitshead$i$sexcattail -crit $STARCATDIR/$fitshead$i$starcattail -param KSBf90.param -pgopen /xwin -out PSF.dat
+    while read tile grp
+    do
+	if [ $grp = $obs_group ]; then
 
-#$KSBDIR/psffit.a -nimage 3 -image image.list -in cat.list -crit $STARCATDIR/$fitshead$i$starcattail -param KSBf90.param -pgopen /xwin -out PSF.dat
+	    echo $DATADIR/$fitshead$tile$fitstail
+	fi
+    done < tile_group.dat  >  IM_CAT_LISTS/image.list.$obs_group
 
-# single image - hardwired to disk1 until disk2 faults corrected
+    # write out catalogue location
 
-$KSBDIR/psffit.a -nimage 1 -image /disk1/cech/STAGES/RRG_update/test_data/a901-01-sci.fits -in /disk1/cech/STAGES/RRG_update/test_data/a901-01-ab.cat -crit  /disk1/cech/STAGES/RRG_update/test_data/a901-01.chosen_stars.cat -param KSBf90.param -pgopen /xwin -out PSF.dat
+    while read tile grp
+    do
+	if [ $grp = $obs_group ]; then
+
+	    echo $CATDIR/$fitshead$tile$sexcattail
+
+	fi
+    done < tile_group.dat  >  IM_CAT_LISTS/cat.list.$obs_group
+
+
+    # count the number of images in each group
+    COUNTER=`wc -l IM_CAT_LISTS/cat.list.$obs_group | awk '{print $1}'`
+    
+    i=01
+
+    # RUN psffit for each group to create PSF models
+
+    $KSBDIR/psffit.a -nimage $COUNTER -image IM_CAT_LISTS/image.list.$obs_group -in IM_CAT_LISTS/cat.list.$obs_group -crit $STARCATDIR/$fitshead$i$starcattail -param KSBf90.param -pgopen /xwin -out $OUTDIR/STAGES_PSF.$obs_group.dat
+
+done
+
