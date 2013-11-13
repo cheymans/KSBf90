@@ -1,6 +1,6 @@
 #!/bin/sh
 
-KSBDIR=/home/cech/KSBf90
+KSBDIR=/home/cajd/Size_Measurements/src/
 DATADIR=/disk2/cech/STAGES_image_analysis/images/scifits/
 STARCATDIR=/disk2/cech/STAGES_image_analysis/stars/starcats/
 CATDIR=/disk2/cech/STAGES_image_analysis/images/SExcats/
@@ -28,4 +28,4 @@ i=01
 
 # single image - hardwired to disk1 until disk2 faults corrected
 
-$KSBDIR/psffit.a -nimage 1 -image /disk1/cech/STAGES/RRG_update/test_data/a901-01-sci.fits -in /disk1/cech/STAGES/RRG_update/test_data/a901-01-ab.cat -crit  /disk1/cech/STAGES/RRG_update/test_data/a901-01.chosen_stars.cat -param KSBf90.param -pgopen /xwin -out PSF.dat
+$KSBDIR/psffit.a -nimage 1 -image /home/cech/a901-01-sci.fits -in /home/cajd/Size_Measurements/test_data/a901-01-ab.cat -crit  /home/cajd/Size_Measurements/test_data/a901-01.chosen_stars.cat -param KSBf90.param -pgopen /xwin -out PSF.dat

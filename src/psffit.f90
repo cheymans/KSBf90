@@ -1,3 +1,4 @@
+
 ! Program to fit a polynomial psf model to the stars
 ! selected by findstars
 ! Uses PGPLOT to show diagnostic plots
@@ -100,8 +101,8 @@ integer :: mpix,npix
 character*50 :: toplabel
 character*500 :: plot
 
-!--Added by Chris
-integer::nim
+!--RRG Additions--!
+real*4::PSF_q(2,2), PSF_q4(2,2,2,2), RRG_Q(2,2)
 
 ! set up default plotting
 plot = '/xwin'
@@ -298,7 +299,10 @@ do im = 1,nim
          
          ! getshape is the nuts and bolts of KSB
          
-         call getshape(xc,yc,flux(i),rg(i),flag(i,irg),xedge,yedge,e,psm,psh)
+         PSF_Q =0.; PSF_Q4 = 0.
+         call getshape(xc,yc,flux(i),rg(i),flag(i,irg),xedge,yedge,e,psm,psh, PSF_q, PSF_q4)
+         !--Correct using RRG--!
+         call RRG_PSF_Correction(rg(i), PSF_Q, PSF_Q4, RRG_Q)
          
          ! uncomment the following to see raw ellipticities plotted
          !call plotit(100000,x(i),y(i),e(0),e(1))
@@ -454,6 +458,40 @@ call pgend
 end Program psffit
 
 !****************************************************************
+! RRG PSF Correction model
+!****************************************************************
+!Uses 2nd and 4th order moments output by the KSB method [getshape()].
+!Authored by CAJD on 13th November 2013.
+!
+!
+!****************************************************************
+
+subroutine RRG_PSF_Correction(rwindow, Q2, Q4, RRG_Q2)
+  use Main
+  !-Implements Equation (52) of Rhodes, Refridgier and Groth '10, to return the unweighted quadropole moment.
+  !--Summation is assumed in the kk indices
+  real*4::rwindow
+  real*4::Q2(2,2), Q4(2,2,2,2)
+  real*4::RRG_Q2(2,2)
+
+  integer::ii,jj
+  
+  if(size(Q2) /= 4) then
+     print *, size(Q2), size(Q2,1), size(q2,2)
+     STOP 'RRG_PSF_Correction - FATAL ERROR - input Q2 is not of the correct size (2x2=4)'
+  end if
+  if(size(Q4) /= 16) STOP 'RRG_PSF_Correction - FATAL ERROR - input Q4 is not of the correct size (2x2x2x2=16)'
+
+  do ii = 1, 2
+     do jj = 1, 2
+        RRG_Q2(ii,jj) = Q2(ii,jj) -(1.e0_4/(2.e0_4*rwindow*rwindow))*(Q2(ii,jj)*(Q2(1,1)+Q2(2,2)) - (Q4(ii,jj,1,1) + Q4(ii,jj,2,2)))
+     end do
+  end do
+
+end subroutine RRG_PSF_Correction
+
+
+!****************************************************************
 ! KSB nuts and bolts
 !****************************************************************
 !
@@ -484,8 +522,11 @@ integer                       :: negflux
 integer                       :: N1, N2
 
 !--RRG Internal Declarations---!
-real*4::q0
-real*4, allocatable, dimension(:)::obj_Grid_x, Obj_Grid_y
+integer::ii,jj,kk,ll
+real*4::q0, q0_test, q_test(2,2)
+real*4, allocatable, dimension(:)::obj_Grid_x, Obj_Grid_y, dx_test, dy_test
+real*4,allocatable::W_test(:,:)
+real*4::dxy(2)
 
 real*4                  :: xim(0:1)
 real*4                  :: d(0:1)
@@ -523,23 +564,32 @@ psh = 0.0
 q = 0.0
 d = 0.0
    
-q0 = 0.
-q4 = 0.
+q0 = 0.0
+q4 = 0.0
+
+q_test = 0.e0_4; q0_test = 0.e0_4
 
 
-!--Implementation of CAJD methods for calculation of moments--!
-!-Unused as requires Intensity Map to be defined over a grid, howeve this grid could be easily populated-!
-!--Define Object Grid, used in my subroutines. To keep the Guassian Width defined in the same way as below, Grids should have dx = dy = 1--!
-!---NOTE, THIS IS NOT NORMALISED--!
-allocate(Obj_Grid_x(size(Object,1))); allocate(Obj_Grid_y(size(Object,2)))
-do i = 1, maxval( (/ size(Obj_Grid_x), size(Obj_Grid_y) /) )
-   if( i <= size(Obj_Grid_x) ) Obj_Grid_x(i) = i
-   if( i <= size(Obj_Grid_y) ) Obj_Grid_y(i) = i
-end do
-call Weighted_Intensity_Moment_0(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width = rwindow/r, I = q0)
-call Weighted_Intensity_Moment_2(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, IM = q, Normalisation = 1.e0_4)
-call Weighted_Intensity_Moment_4(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow/r, IM = q4, Normalisation = 1.e0_4)
-deallocate(Obj_Grid_x, Obj_Grid_y)
+!!$!--Implementation of CAJD methods for calculation of moments--!
+!!$!-Unused as requires Intensity Map to be defined over a grid, howeve this grid could be easily populated-!
+!!$!--Define Object Grid, used in my subroutines. To keep the Guassian Width defined in the same way as below, Grids should have dx = dy = 1--!
+!!$!---NOTE, THIS IS NOT NORMALISED--!
+!!$print *, 'Seting up grid and calling weights'
+!!$allocate(Obj_Grid_x(size(Object,1))); allocate(Obj_Grid_y(size(Object,2))); Obj_Grid_x = 0.; Obj_Grid_y = 0.
+!!$do i = 1, maxval( (/ size(Obj_Grid_x), size(Obj_Grid_y) /) )
+!!$   if( i <= size(Obj_Grid_x) ) Obj_Grid_x(i) = i-1
+!!$   if( i <= size(Obj_Grid_y) ) Obj_Grid_y(i) = i-1
+!!$end do
+!!$!--TESTING--!
+!!$allocate(dx_test(size(Obj_Grid_x))); allocate(dy_test(size(Obj_Grid_y))); allocate(W_test(size(Obj_Grid_x),size(Obj_Grid_y)))
+!!$dx_test = 0.; dy_test = 0.; W_test = 0.
+!!$
+!!$print *, 'Calling weighted intensity moments with width:', rwindow, xim
+!!$call Weighted_Intensity_Moment_0(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width = rwindow, I = q0)
+!!$print *, 'Calling 2nd order:'
+!!$call Weighted_Intensity_Moment_2(Intensity_Map = object, Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(0),xim(1)/), Gauss_Width =rwindow, IM = q, Normalisation = 1.e0_4, dx =  dx_test, dy =  dy_test, Wt = W_test)
+!!$call Weighted_Intensity_Moment_4(Intensity_Map = transpose(object), Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(1),xim(0)/), Gauss_Width =rwindow, IM = q4, Normalisation = 1.e0_4)
+!!$deallocate(Obj_Grid_x, Obj_Grid_y)
 
 
 if(rmax>xedge.or.rmax>yedge)then
@@ -554,6 +604,8 @@ else
          dx = j - xim(0)
          dy = i - xim(1)
          
+         dxy = (/dx,dy/)
+
          r = sqrt(dx**2 + dy**2)
          
          if (r <= rmax)then
@@ -562,7 +614,14 @@ else
             Wpp = 0.25 * W / rwindow**4
             
             fc = object(j,i)
-            
+
+!!$ DELETE         
+!!$            !--TESTING--!
+!!$            print *, 'fc*W:', W_test(j+1,j+1)/(fc*W)
+!!$            print *, 'dx:', dx_test(j+1)/j; 
+!!$            print *, 'dy:', dy_test(i+1)/j
+
+   
 !            if(gsflag.ge.2.and.object(j,i)<0.0)then
 !               fc = (object(j-1,i-1) + object(j-1,i) + &
 !                    object(j-1,i+1) + object(j,i-1) + &
@@ -573,14 +632,27 @@ else
             d(0) = d(0) + (W * fc * dx)
             d(1) = d(1) + (W * fc * dy)
 
-!!$            q(1,1) = q(1,1) + (fc * W * dx * dx)
-!!$            q(2,2) = q(2,2) + (fc * W * dy * dy)
-!!$            q(1,2) = q(1,2) + (fc * W * dx * dy)
-!!$            q(2,1) = q(2,1) + (fc * W * dx * dy)
-
-            !--Chris changes--!
-!            q0 = q0 + (fc * W)
-            !-----------------!
+            !--Set up quadropole moments-!
+            q0 = q0 + (fc * W)
+            do ii = 1, 2
+               do jj = 1, 2
+                  q(ii,jj) =  q(ii,jj) + (fc * W * dxy(ii) * dxy(jj))
+                  do kk = 1,2
+                     do ll = 1,2
+                        q4(ii,jj,kk,ll) = q4(ii,jj,kk,ll) + (fc * W * dxy(ii) * dxy(jj) * dxy(kk) * dxy(ll))
+                     end do
+                  end do
+               end do
+            end do
+!!$
+!!$            q_test(1,1) = q_test(1,1) + (fc * W * dx * dx)
+!!$            q_test(2,2) = q_test(2,2) + (fc * W * dy * dy)
+!!$            q_test(1,2) = q_test(1,2) + (fc * W * dx * dy)
+!!$            q_test(2,1) = q_test(2,1) + (fc * W * dx * dy)
+!!$
+!!$            !--Chris changes--!
+!!$            q0_test = q0_test + (fc * W)
+!!$            !-----------------!
 
 
             DD = di * di + dj * dj
@@ -605,6 +677,11 @@ else
       end do
    end do
 
+!!$   !---TESTING DELETE---!
+!!$   print *, 'q0:', q0/q0_test
+!!$   print *, 'q:', q/q_test
+!!$   read(*,*)
+
    !normalise d
    
    if (fluxs > 0)then 
@@ -616,6 +693,9 @@ else
       negflux = 1
    end if
    
+   !--RRG PSF MODEL--!
+   
+
    
    ! calculate ellipticities
    denom = q(1,1) + q(2,2)                 
@@ -1364,5 +1444,6 @@ if(intot>1000)then
    write(*,*) 'WARNING:  Number of columns in SExtractor exceeds 1000 limit'
    stop
 end if
+
 
 end Subroutine read_param

@@ -121,13 +121,15 @@ module Moments
 
     end subroutine Weighted_Intensity_Moment_0
 
-    subroutine Weighted_Intensity_Moment_2(Intensity_Map, Grid_1, Grid_2, Centroid_Position, Gauss_Width, IM, Normalisation)
+    subroutine Weighted_Intensity_Moment_2(Intensity_Map, Grid_1, Grid_2, Centroid_Position, Gauss_Width, IM, Normalisation, dx, dy, Wt)
       !-Returns I_ij in equation 4 of RRG-!
       !-Grid defines the grid over which the intensity map is defined. Centroid_Position
       real(4),intent(in)::Intensity_Map(:,:), Grid_1(:), Grid_2(:)
       real(4), intent(in)::Centroid_Position(:)
       real(4),intent(in)::Gauss_Width
       real(4), optional::Normalisation
+      !--TESTING-!
+      real(4)::dx(size(Grid_1)), dy(size(Grid_2)), Wt(size(Grid_1),size(Grid_2))
 
       real(4),intent(out)::IM(2,2)
 
@@ -140,15 +142,18 @@ module Moments
       real(4)::dGrid_1(size(Grid_1)), dGrid_2(size(Grid_2))
 
       INTERFACE
-         subroutine Weighted_Intensity_Moment_2(Intensity_Map, Grid_1, Grid_2, Centroid_Position, Gauss_Width, IM, Normalisation)
+         subroutine Weighted_Intensity_Moment_2(Intensity_Map, Grid_1, Grid_2, Centroid_Position, Gauss_Width, IM, Normalisation, dx, dy, Wt)
            real(4),intent(in)::Intensity_Map(:,:), Grid_1(:), Grid_2(:)
            real(4), intent(in)::Centroid_Position(:)
            real(4),intent(in)::Gauss_Width
            real(4), optional::Normalisation
-           
+           real(4)::dx(size(Grid_1)), dy(size(Grid_2)), Wt(size(Grid_1),size(Grid_2))           
+
            real(4),intent(out)::IM(2,2)
          END subroutine Weighted_Intensity_Moment_2
       END INTERFACE
+
+      print *, 'Calculating 2nd order moment'
 
       allocate(Combined_Grid(2,maxval((/size(Grid_1), size(Grid_2)/)))); Combined_Grid = 0.e0_4
       Combined_Grid(1,1:size(Grid_1)) = Grid_1; Combined_Grid(2,1:size(Grid_2)) = Grid_2 
@@ -166,16 +171,27 @@ module Moments
 
       call Weighted_Intensity(Intensity_Map, Grid_1, Grid_2, Centroid_Position, Gauss_Width, Integrand) 
 
+      !--TESTING
+!!$      dx = 0.; dy = 0.; Wt = 0.
+!!$      dx = (Combined_Grid(1,1:size(Grid_1))-Centroid_position(1))!dGrid_1(pix_loop_1)
+!!$      dy = (Combined_Grid(2,1:size(Grid_2))-Centroid_position(2))!dGrid_2(pix_loop_2)*
+
       do i = 1, 2
          do j = 1, 2
                   do pix_loop_1 = 1, size(Grid_1)
+                     if(pix_loop_1 > size(Grid_1)) cycle
                      do pix_loop_2 = 1, size(Grid_2)
                         Grid_Pix = (/pix_loop_1, pix_loop_2/)
-                        IM(i,j) = IM(i,j) + dGrid_1(pix_loop_1)*dGrid_2(pix_loop_2)*(Combined_Grid(i,Grid_Pix(i))-Centroid_position(i))*(Combined_Grid(j,Grid_Pix(j))-Centroid_position(j))*Integrand(pix_loop_1, pix_loop_2)
+                        if(pix_loop_2 > size(Grid_2)) cycle
+                        !---TESting--!
+                        IM(i,j) = IM(i,j) + dGrid_1(pix_loop_1)*dGrid_2(pix_loop_2)*(Combined_Grid(i,Grid_Pix(i))-Centroid_position(i))*(Combined_Grid(j,Grid_Pix(j))-Centroid_position(j))*Integrand(pix_loop_2, pix_loop_1)
                      end do
                   end do
          end do
       end do
+      !---TESTING
+      Wt = Integrand
+
       if(present(Normalisation)) IM = IM/Normalisation 
 
       deallocate(Combined_Grid, Integrand)
@@ -353,13 +369,25 @@ module Moments
       if(allocated(Res)) deallocate(Res)
       allocate(Res(size(Intensity,1), size(Intensity,2))); Res  = 0.e0_4
       !--Set w(theta)i(theta) = 0 outside truncation angle, only set a value within truncation angle. NOTE: all values here are set on a pixel scale, therefore Guass_Weight_Width MUST be in units of pixels--!
-      do theta_1 = maxval((/Centroid_Position_Index(1) -int(truncation_angle_1+1),0/)), minval( (/ size(Intensity,1), Centroid_Position_Index(1) + int(Truncation_Angle_1+1)/))
-         do theta_2 = maxval((/0,Centroid_Position_Index(2) - int(Truncation_Angle_2+1)/)), minval((/size(Intensity,2),Centroid_Position_Index(2) + int(Truncation_Angle_2+1)/))
-            Res(theta_1, theta_2) = ( 1.e0_4/(6.28319e0_4*Gauss_Weight_Width*Gauss_Weight_Width) )*exp( -1.e0_4*((Grid_1(theta_1)-Centroid_Position(1))**2.e0_4 + (Grid_2(theta_2)-Centroid_Position(2))**2.e0_4)/(2.e0_4*Gauss_Weight_Width*Gauss_Weight_Width) )*Intensity(theta_1, theta_2)
+!      do theta_1 = maxval((/Centroid_Position_Index(1) -int(truncation_angle_1+1),0/)), minval( (/ size(Intensity,1), Centroid_Position_Index(1) + int(Truncation_Angle_1+1)/))
+!         do theta_2 = maxval((/0,Centroid_Position_Index(2) - int(Truncation_Angle_2+1)/)), minval((/size(Intensity,2),Centroid_Position_Index(2) + int(Truncation_Angle_2+1)/))
+      do theta_1 = 1, size(Res,1)
+         do theta_2 = 1, size(Res,2)
+            Res(theta_1, theta_2) = exp( -1.e0_4*((Grid_1(theta_1)-Centroid_Position(1))**2.e0_4 + (Grid_2(theta_2)-Centroid_Position(2))**2.e0_4)/(2.e0_4*Gauss_Weight_Width*Gauss_Weight_Width) )*Intensity(theta_1, theta_2)
          end do
       end do
+      !( 1.e0_4/(6.28319e0_4*Gauss_Weight_Width*Gauss_Weight_Width) )*
 
-      if(all(Res == 0.e0_4)) STOP 'Weighted_Intensity - Result is empty'
+      if(all(Res == 0.e0_4)) then 
+         print *, 'Weighted_Intensity - Result is empty'
+         print *, Gauss_Weight_Width
+         read(*,*)
+         print *, Grid_1(:) - Centroid_Position(1)
+         read(*,*)
+         print *, Grid_1(:) - Centroid_Position(2)
+         read(*,*)
+          print *, Intensity
+       end if
 
     end subroutine Weighted_Intensity
 
