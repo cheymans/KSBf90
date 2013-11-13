@@ -3,11 +3,17 @@ FFLAGS = -CB -O2
 
 LIB = -L/star/lib -lpgplot -L/usr/X11 -lX11 -L/usr/lib64 -lcfitsio
 
-OBJS = Moments.o
+OBJS = Calculate_Moments.o
+
+gal_correct:$(OBJS)
+	$(FC) $(FFLAGS) $@.f90 -o $@.a $(OBJS) $(LIB)
 
 psffit: $(OBJS)
 	rm $@.a
 	$(FC) $(FFLAGS) $@.f90 -o $@.a $(OBJS) $(LIB)
+
+.f90.o:
+	$(FC) -c $(FFLAGS) $< $(LIB)
 
 clean:
 	rm *.o

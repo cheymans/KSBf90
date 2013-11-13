@@ -45,7 +45,6 @@ integer :: nstars
 integer :: irgmax
 parameter (irgmax = 100)
 real*4, dimension(1:imax,1:4,0:irgmax) :: estar,ecor,pstar,psmstar
-real*4, dimension(1:imax,1:4,0:irgmax) :: p_RRG
 real*4, dimension(0:irgmax) :: rgstar,e1ave,e2ave,ec1ave,ec2ave
 real*4, dimension(0:irgmax) :: e1ave_err,e2ave_err,ec1ave_err,ec2ave_err
 real*4, dimension(0:irgmax) ::shsm
@@ -104,10 +103,6 @@ character*500 :: plot
 
 !--RRG Additions--!
 real*4::PSF_q(2,2), PSF_q4(2,2,2,2), RRG_Q(2,2)
-integer :: ngrid,igx,igy
-parameter(ngrid=10)
-real*4, dimension(1:ngrid,1:ngrid) :: plotme,occ
-
 
 ! set up default plotting
 plot = '/xwin'
@@ -207,7 +202,9 @@ do im = 1,nim
       read(44,'(a)',end=23) line
       if(line(1:1).ne.'#')then
          read(line(1:1500),*) (catalogue(k),k=1,intot)
-                       
+         
+         write(*,*) catalogue(imag), ifwhm, catalogue(ifwhm)
+                  
          if(catalogue(imag)< magh.and.catalogue(imag)> magl.and.&
               catalogue(ifwhm)< fwhmh.and.catalogue(ifwhm)> fwhml.and.&
               catalogue(ifr)< frh.and.catalogue(ifr)> frl)then
@@ -320,12 +317,6 @@ do im = 1,nim
          pstar(i,1,irg) = Psminv(1) * e(0) + Psminv(2) * e(1)
          pstar(i,2,irg) = Psminv(3) * e(0) + Psminv(4) * e(1)
          
-         ! for plotting
-         p_RRG(i,1,irg) = RRG_Q(1,1)
-         p_RRG(i,2,irg) = RRG_Q(1,2)
-         p_RRG(i,3,irg) = RRG_Q(2,1)
-         p_RRG(i,4,irg) = RRG_Q(2,2)
-         
          ! uncomment the following to see p's plotted
          !call plotit(100,x(i),y(i),pstar(i,1,irg),pstar(i,2,irg))
          
@@ -342,9 +333,6 @@ do im = 1,nim
    end do
    ! reset star counter and move on to next image
    nprev = nstars
-   !     close the fits file and free the unit number
-   call ftclos(unit, status)
-   call ftfiou(unit, status)
 end do
 
 ! psffit makes a polynomial fit to the PSF distribution
@@ -420,10 +408,6 @@ do irg = 1,rgmax
    
          call polyfit(p1,p2,chipflag)
 
-!*
-! add in here polyfit of p_RRG and the 4th order measurement
-!*
-
 !         call fitplot(nint(naxes(1)/40.0),chipflag)
          
          ! correct the PSF ellipticities with the above model
@@ -448,9 +432,6 @@ do irg = 1,rgmax
 
          ! for each CCD chip write out the PSF parameters shsm and p
 
-!* add in here wrtiting out the fit parameters to a file to be
-! read in by galcorrect
-
          write(45,108) irg,ix,iy,shsm(irg),&
                        (pfit1(j),j=1,nparams),(pfit2(j),j=1,nparams)
          
@@ -459,38 +440,17 @@ do irg = 1,rgmax
       end do
    end do
    call e_scatter_plot(irg,fitflag)
-
-   ! now plot p_RRG on a grid
-
-   do j = 1,4
-      plotme = 0.0
-      occ = 0.001
-      do i = 1,nstars
-         if(chipflag(i)==0)then
-            igx = int(x(i)*ngrid/naxes(1)) + 1
-            igy = int(y(i)*ngrid/naxes(1)) + 1
-            plotme(igx,igy) = plotme(igx,igy) + p_RRG(i,j,irg)
-            occ(igx,igy) = occ(igx,igy) + 1
-         end if
-      end do
-      
-      plotme = plotme/occ
-
-      write(*,*) plotme
-
-      call plotarray(ngrid,ngrid,plotme)
-
-   end do
-
-
 end do
 
 ! this plots how the PSF ellipticity varies with a different weighting
 ! radius rg
 
-write(*,*) 'got this far'
-
 call plot_rg_variation
+
+! Closing FITS file 
+      
+call ftflus(unit,status)
+call ftclos(unit,status)
 
 ! Close pgplot window
 
@@ -539,15 +499,18 @@ end subroutine RRG_PSF_Correction
 ! With thanks to Nick Kaiser for the original imcat C version 
 ! of the getshape subroutine.
 !
+!Edited on the 12th Nov 2013 by Christopher Duncan, to add the PSF measurement Eqaution (50) of RRG. 
 !****************************************************************
+
 Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh, q, q4)
-Use Main
+Use Main; use Moments, only:Weighted_Intensity_Moment_0, Weighted_Intensity_Moment_2, Weighted_Intensity_Moment_4
 Implicit none
 
 real*4         :: xs,ys,rwindow,fluxs
 integer        :: istar,gsflag
 real*4         :: xedge,yedge
 real*4,intent(out)         :: q(1:2,1:2), q4(2,2,2,2)
+
 real*4                        :: denom
 integer                       :: i0, j0, i, j, di, dj, rmax, l, m
 real*4                        :: r, dx, dy
@@ -628,8 +591,10 @@ q_test = 0.e0_4; q0_test = 0.e0_4
 !!$call Weighted_Intensity_Moment_4(Intensity_Map = transpose(object), Grid_1 = Obj_Grid_x, Grid_2 = Obj_Grid_y, Centroid_Position = (/xim(1),xim(0)/), Gauss_Width =rwindow, IM = q4, Normalisation = 1.e0_4)
 !!$deallocate(Obj_Grid_x, Obj_Grid_y)
 
+
 if(rmax>xedge.or.rmax>yedge)then
    gsflag = 1
+   !go to 88
 else
    do i = max(i0-rmax,0),min(i0+rmax,N2)
       do j = max(j0-rmax,0),min(j0+rmax,N1)
@@ -666,6 +631,7 @@ else
             
             d(0) = d(0) + (W * fc * dx)
             d(1) = d(1) + (W * fc * dy)
+
             !--Set up quadropole moments-!
             q0 = q0 + (fc * W)
             do ii = 1, 2
@@ -730,7 +696,8 @@ else
    !--RRG PSF MODEL--!
    
 
-      ! calculate ellipticities
+   
+   ! calculate ellipticities
    denom = q(1,1) + q(2,2)                 
    
    if (denom > 0)then
@@ -754,6 +721,9 @@ end if
 !--Renormalise--!
 q = q/q0
 q4 = q4/q0
+
+!88 continue
+
 
 
 !write(*,*) 'e',(e(i),i=0,1),gsflag

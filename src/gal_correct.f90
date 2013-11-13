@@ -59,7 +59,7 @@ end Module Main
 !-------------------------------------------------------------
 
 Program gal_correct
-use main
+use main; use Calculate_Moments, only:getshape
 implicit none
 
 integer:: i,j,k,ii,jj,kk
@@ -98,6 +98,9 @@ integer :: mpix,npix
 
 character*50 :: toplabel
 
+
+!--RRG ADDITIONS--!
+real*4::KSB_Q2(2,2), KSB_Q4(2,2,2,2)
 
 narg=iargc()
 
@@ -258,7 +261,8 @@ do i = 1,imax
          
          ! getshape is the nuts and bolts of KSB
                   
-         call getshape(xc,yc,flux(i),rg(i),flag(i),xedge,yedge,e,psm,psh)
+         KSB_Q2 = 0.0; KSB_Q4 = 0.0
+         call getshape(xc,yc,flux(i),rg(i),flag(i),xedge,yedge,e,psm,psh, KSB_Q2, KSB_Q4)
 
          call calcp(i,irg(i),pfitted)
          
@@ -328,167 +332,273 @@ write(*,110) (mean(i),i=0,1),(sd(i),i=0,1), kk
 
 end Program 
 
-!****************************************************************
-! KSB nuts and bolts
-!****************************************************************
-!
-! KSBf90 version of getshape
-! With thanks to Nick Kaiser for the original imcat C version 
-! of the getshape subroutine.
-!
-!****************************************************************
+!******************************************************************
+!RRG nuts and bolts
+!******************************************************************
+! Authored by CAJD on 13th November 2013.
+!******************************************************************
 
-Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh)
-Use Main
-Implicit none
+integer function factorial(n)
+  integer::n
+  
+  integer::count
+  
+  factorial = 1
+  do count = n, 1, -1
+     factorial = factorial*count
+  end do
+  return
+end function factorial
 
-real*4         :: xs,ys,rwindow,fluxs
-integer        :: istar,gsflag
-real*4         :: xedge,yedge
+subroutine RRG_Isotropic_Correction(PSF_rwindow, rwindow, Q2, RRG_Q2)
+  !--Implements equation (49) of RRG, corrects for the isotropic (guassian) part of the PSF. Q2 is the galaxy quadropole--!
+  !--Note: Does this need implemented before/after the anisotropic - probably after--!
+  real*4,intent(in)::PSF_rwindow, rwindow
+  real*4, intent(in)::Q2(2,2)
+  real*4, intent(out):: RRG_Q2(2,2)
 
-real*4                        :: q(0:1,0:1), denom
-integer                       :: i0, j0, i, j, di, dj, rmax, l, m
-real*4                        :: r, dx, dy
-real*4                        :: W, Wp, Wpp, fc, DD, DD1, DD2
-real*4                        :: Xsm(0:1,0:1), Xsh(0:1,0:1)
-real*4                        :: em(0:1), eh(0:1)
-integer                       :: R_MAX_FACTOR
-integer                       :: negflux
-integer                       :: N1, N2
+  integer::i,j, Delta(2,2)
+  
+  Delta = 0.0; Delta(1,1) = 1.0; Delta(2,2) = 1.0
+  
+  do i = 1, 2
+     do j = 1, 2
+        RRG_Q2(i,j) = ((PSF_rwindow/rwindow)**4.0)*(Q2(i,j) - rwindow*rwindow*Delta(i,j))
+     end do
+  end do
 
-real*4                  :: xim(0:1)
-real*4                  :: d(0:1)
-real*4                  :: e(0:1)
-real*4                  :: psm(0:1,0:1)
-real*4                  :: psh(0:1,0:1)
-real*4                  :: fb0
-real*4, dimension(0:1)     :: dfb
+end subroutine RRG_Isotropic_Correction
 
-if(rwindow.le.0.0)then
-   write(*,*) 'problem rwindow = 0 in getshapes'
-end if
+subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
+  !--Implements equation (46) of RRG to correct the galaxy quadropole moment--!
+  real*4::rwindow
+  real*4::Q2(2,2), PSF_Q2(2,2), PSF_Q4(2,2,2,2), Q4(2,2,2,2)
+  real*4::RRG_Q2(2,2)
 
-xim(0) = xs
-xim(1) = ys
+  integer::i,j,k,l, ll
+  real*4::C(2,2,2,2), Delta(2,2), CQ4(2,2,2,2),  Permutation_Set(4)
+  real*4::  Permutations(24,4)
 
-R_MAX_FACTOR = 4
+!  allocate(Permutations(factorial(size(Permutation_Set)), size(Permutation_Set))); Permutations = 0
 
-N1 = n_size
-N2 = m_size  
+  !--Calculate Corrected 4th order moment (CQ4), given in equation [50]--!
+  Delta = 0.0
+  Delta(1,1) = 1.0; Delta(2,2) = 1.0
+  CQ4 = 0.0
+  do i = 1, 2
+     do j = 1, 2
+        do k = 1, 2
+           do l= 1, 2
+              Permutation_Set = (/i,j,k,l/)
+              call permutate(Permutation_Set, Permutations)
+              CQ4(i,j,k,l) = Q4(i,j,k,l) - PSF_Q4(i,j,k,l)
+              do ll = 1, size(Permutations,1)
+                 CQ4(i,j,k,l) = CQ4(i,j,k,l) - 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),Permutations(ll,4)) + 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*PSF_Q2(Permutations(ll,3),Permutations(ll,4))
+              end do
+           end do
+        end do
+     end do
+  end do
 
-rmax = rwindow * R_MAX_FACTOR + 1       ! round up integer
-i0 = xim(1)                          ! round down integer
-j0 = xim(0)                          !  ""
+  !--Calculate Matrix C [Equation (40)]--!
+  C = 0.0
+  do i = 1, 2
+     do j = 1, 2
+        do k = 1, 2
+           do l = 1, 2
+              C(i,j,k,l) = Delta(i,k)*Delta(j,k) -(1.e0_4/(rwindow*rwindow))*(Q2(k,i)*Delta(j,l) + Q2(k,j)*Delta(i,l)) + (1.e0_4/(2.e0_4*rwindow*rwindow))*(CQ4(i,j,k,l) - Q2(i,j)*Q2(k,l))
+           end do
+        end do
+     end do
+  end do
 
-! zero arrays
+  !--Equation (46)
+  do i = 1, 2
+     do j = 1, 2
+        RRG_Q2(i,j) = Q2(i,j)
+        !--Summation over k,l assumed--!
+        do k = 1, 2
+           do l = 1, 2
+              RRG_Q2(i,j) = RRG_Q2(i,j) - C(i,j,k,l)*PSF_Q2(k,l)
+           end do
+        end do
+     end do
+  end do
 
-eh = 0.0
-em = 0.0
-e = 0.0
-Xsh = 0.0
-Xsm = 0.0
-psm = 0.0
-psh = 0.0
-q = 0.0
-d = 0.0
-   
-if(rmax>xedge.or.rmax>yedge)then
-   gsflag = 1
-   go to 88
-else
-   do i = max(i0-rmax,0),min(i0+rmax,N2)
-      do j = max(j0-rmax,0),min(j0+rmax,N1)
-         
-         di = i - i0
-         dj = j - j0
-         dx = j - xim(0)
-         dy = i - xim(1)
-         
-         r = sqrt(dx**2 + dy**2)
-         
-         if (r <= rmax)then
-            W = exp(-0.5 * r**2 / rwindow**2)
-            Wp = -0.5 * W / rwindow**2
-            Wpp = 0.25 * W / rwindow**4
-            
-            fc = object(j,i)
-            
-!            if(gsflag.ge.2.and.object(j,i)<0.0)then
-!               fc = (object(j-1,i-1) + object(j-1,i) + &
-!                    object(j-1,i+1) + object(j,i-1) + &
-!                    object(j,i+1)+ object(j+1,i-1)+ &
-!                    object(j+1,i)+ object(j+1,i+1)) / 8.0
-!            end if
-            
-            d(0) = d(0) + (W * fc * dx)
-            d(1) = d(1) + (W * fc * dy)
-            q(0,0) = q(0,0) + (fc * W * dx * dx)
-            q(1,1) = q(1,1) + (fc * W * dy * dy)
-            q(0,1) = q(0,1) + (fc * W * dx * dy)
-            q(1,0) = q(1,0) + (fc * W * dx * dy)
-            DD = di * di + dj * dj
-            DD1 = dj * dj - di * di
-            DD2 = 2 * di * dj
-            Xsm(0,0) = Xsm(0,0) + &
-                       (2 * W + 4 * Wp * DD + 2 * Wpp * DD1 * DD1) * fc 
-            Xsm(1,1) = Xsm(1,1) + &
-                       (2 * W + 4 * Wp * DD + 2 * Wpp * DD2 * DD2) * fc 
-            Xsm(0,1) = Xsm(0,1) + (2 * Wpp * DD1 * DD2 * fc) 
-            Xsm(1,0) = Xsm(1,0) + (2 * Wpp * DD1 * DD2 * fc)
-            em(0) = em(0) + (4 * Wp + 2 * Wpp * DD) * DD1 * fc
-            em(1) = em(1) + (4 * Wp + 2 * Wpp * DD) * DD2 * fc
-            Xsh(0,0) = Xsh(0,0) + (2 * W * DD + 2 * Wp * DD1 * DD1) * fc
-            Xsh(1,1) = Xsh(1,1) + (2 * W * DD + 2 * Wp * DD2 * DD2) * fc
-            Xsh(0,1) = Xsh(0,1) + (2 * Wp * DD1 * DD2 * fc)
-            Xsh(1,0) = Xsh(1,0) + (2 * Wp * DD1 * DD2 * fc)
-            eh(0) = eh(0) + (2 * Wp * DD * DD1 * fc)
-            eh(1) = eh(1) + (2 * Wp * DD * DD2 * fc)
+end subroutine RRG_Anisotropic_Correction
 
-         end if
-      end do
-   end do
+  recursive subroutine permutate(E, P)
+    integer, intent(in)  :: E(:)       ! array of objects                       
+    integer, intent(out) :: P(:,:)     ! permutations of E                      
+    integer  :: N, Nfac, i, k, S(size(P,1)/size(E), size(E)-1) 
+    N = size(E); Nfac = size(P,1);
+    do i=1,N                           ! cases with E(i) in front               
+      if( N>1 ) call permutate((/E(:i-1), E(i+1:)/), S)
+      forall(k=1:Nfac/N) P((i-1)*Nfac/N+k,:) = (/E(i), S(k,:)/)
+    end do
+  end subroutine permutate
 
-   !normalise d
-   
-   if (fluxs > 0)then 
-      do l = 0,1
-         d(l) = d(l)/fluxs
-      end do
-      negflux = 0
-   else 
-      negflux = 1
-   end if
-   
-   
-   ! calculate ellipticities
-   denom = q(0,0) + q(1,1)                 
-   
-   if (denom > 0)then
-      e(0) = (q(0,0) - q(1,1)) / denom
-      e(1) = (q(0,1) + q(1,0)) / denom
-      em = em / denom
-      eh = eh / denom
-      eh = eh + (2 * e)
-
-      do l = 0,1
-         do m = 0,1
-            psm(l,m) = 0.5 * (Xsm(l,m) / denom - e(l) * em(m))
-            psh(l,m) = Xsh(l,m) / denom - e(l) * eh(m)
-         end do
-      end do
-   else
-      gsflag = 4
-   end if
-end if
-
-88 continue
-
-!write(*,*) 'e',(e(i),i=0,1),gsflag
-!write(*,*) (d(i),i=0,1)
-!write(*,*) 'psm',(psm(i,0),i=0,1),(psm(i,1),i=0,1)
-!write(*,*) 'psh',(psh(i,0),i=0,1),(psh(i,1),i=0,1)
-
-End subroutine getshape
+!!$!****************************************************************
+!!$! KSB nuts and bolts
+!!$!****************************************************************
+!!$!
+!!$! KSBf90 version of getshape
+!!$! With thanks to Nick Kaiser for the original imcat C version 
+!!$! of the getshape subroutine.
+!!$!
+!!$!****************************************************************
+!!$
+!!$Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh)
+!!$Use Main
+!!$Implicit none
+!!$
+!!$real*4         :: xs,ys,rwindow,fluxs
+!!$integer        :: istar,gsflag
+!!$real*4         :: xedge,yedge
+!!$
+!!$real*4                        :: q(0:1,0:1), denom
+!!$integer                       :: i0, j0, i, j, di, dj, rmax, l, m
+!!$real*4                        :: r, dx, dy
+!!$real*4                        :: W, Wp, Wpp, fc, DD, DD1, DD2
+!!$real*4                        :: Xsm(0:1,0:1), Xsh(0:1,0:1)
+!!$real*4                        :: em(0:1), eh(0:1)
+!!$integer                       :: R_MAX_FACTOR
+!!$integer                       :: negflux
+!!$integer                       :: N1, N2
+!!$
+!!$real*4                  :: xim(0:1)
+!!$real*4                  :: d(0:1)
+!!$real*4                  :: e(0:1)
+!!$real*4                  :: psm(0:1,0:1)
+!!$real*4                  :: psh(0:1,0:1)
+!!$real*4                  :: fb0
+!!$real*4, dimension(0:1)     :: dfb
+!!$
+!!$if(rwindow.le.0.0)then
+!!$   write(*,*) 'problem rwindow = 0 in getshapes'
+!!$end if
+!!$
+!!$xim(0) = xs
+!!$xim(1) = ys
+!!$
+!!$R_MAX_FACTOR = 4
+!!$
+!!$N1 = n_size
+!!$N2 = m_size  
+!!$
+!!$rmax = rwindow * R_MAX_FACTOR + 1       ! round up integer
+!!$i0 = xim(1)                          ! round down integer
+!!$j0 = xim(0)                          !  ""
+!!$
+!!$! zero arrays
+!!$
+!!$eh = 0.0
+!!$em = 0.0
+!!$e = 0.0
+!!$Xsh = 0.0
+!!$Xsm = 0.0
+!!$psm = 0.0
+!!$psh = 0.0
+!!$q = 0.0
+!!$d = 0.0
+!!$   
+!!$if(rmax>xedge.or.rmax>yedge)then
+!!$   gsflag = 1
+!!$   go to 88
+!!$else
+!!$   do i = max(i0-rmax,0),min(i0+rmax,N2)
+!!$      do j = max(j0-rmax,0),min(j0+rmax,N1)
+!!$         
+!!$         di = i - i0
+!!$         dj = j - j0
+!!$         dx = j - xim(0)
+!!$         dy = i - xim(1)
+!!$         
+!!$         r = sqrt(dx**2 + dy**2)
+!!$         
+!!$         if (r <= rmax)then
+!!$            W = exp(-0.5 * r**2 / rwindow**2)
+!!$            Wp = -0.5 * W / rwindow**2
+!!$            Wpp = 0.25 * W / rwindow**4
+!!$            
+!!$            fc = object(j,i)
+!!$            
+!!$!            if(gsflag.ge.2.and.object(j,i)<0.0)then
+!!$!               fc = (object(j-1,i-1) + object(j-1,i) + &
+!!$!                    object(j-1,i+1) + object(j,i-1) + &
+!!$!                    object(j,i+1)+ object(j+1,i-1)+ &
+!!$!                    object(j+1,i)+ object(j+1,i+1)) / 8.0
+!!$!            end if
+!!$            
+!!$            d(0) = d(0) + (W * fc * dx)
+!!$            d(1) = d(1) + (W * fc * dy)
+!!$            q(0,0) = q(0,0) + (fc * W * dx * dx)
+!!$            q(1,1) = q(1,1) + (fc * W * dy * dy)
+!!$            q(0,1) = q(0,1) + (fc * W * dx * dy)
+!!$            q(1,0) = q(1,0) + (fc * W * dx * dy)
+!!$            DD = di * di + dj * dj
+!!$            DD1 = dj * dj - di * di
+!!$            DD2 = 2 * di * dj
+!!$            Xsm(0,0) = Xsm(0,0) + &
+!!$                       (2 * W + 4 * Wp * DD + 2 * Wpp * DD1 * DD1) * fc 
+!!$            Xsm(1,1) = Xsm(1,1) + &
+!!$                       (2 * W + 4 * Wp * DD + 2 * Wpp * DD2 * DD2) * fc 
+!!$            Xsm(0,1) = Xsm(0,1) + (2 * Wpp * DD1 * DD2 * fc) 
+!!$            Xsm(1,0) = Xsm(1,0) + (2 * Wpp * DD1 * DD2 * fc)
+!!$            em(0) = em(0) + (4 * Wp + 2 * Wpp * DD) * DD1 * fc
+!!$            em(1) = em(1) + (4 * Wp + 2 * Wpp * DD) * DD2 * fc
+!!$            Xsh(0,0) = Xsh(0,0) + (2 * W * DD + 2 * Wp * DD1 * DD1) * fc
+!!$            Xsh(1,1) = Xsh(1,1) + (2 * W * DD + 2 * Wp * DD2 * DD2) * fc
+!!$            Xsh(0,1) = Xsh(0,1) + (2 * Wp * DD1 * DD2 * fc)
+!!$            Xsh(1,0) = Xsh(1,0) + (2 * Wp * DD1 * DD2 * fc)
+!!$            eh(0) = eh(0) + (2 * Wp * DD * DD1 * fc)
+!!$            eh(1) = eh(1) + (2 * Wp * DD * DD2 * fc)
+!!$
+!!$         end if
+!!$      end do
+!!$   end do
+!!$
+!!$   !normalise d
+!!$   
+!!$   if (fluxs > 0)then 
+!!$      do l = 0,1
+!!$         d(l) = d(l)/fluxs
+!!$      end do
+!!$      negflux = 0
+!!$   else 
+!!$      negflux = 1
+!!$   end if
+!!$   
+!!$   
+!!$   ! calculate ellipticities
+!!$   denom = q(0,0) + q(1,1)                 
+!!$   
+!!$   if (denom > 0)then
+!!$      e(0) = (q(0,0) - q(1,1)) / denom
+!!$      e(1) = (q(0,1) + q(1,0)) / denom
+!!$      em = em / denom
+!!$      eh = eh / denom
+!!$      eh = eh + (2 * e)
+!!$
+!!$      do l = 0,1
+!!$         do m = 0,1
+!!$            psm(l,m) = 0.5 * (Xsm(l,m) / denom - e(l) * em(m))
+!!$            psh(l,m) = Xsh(l,m) / denom - e(l) * eh(m)
+!!$         end do
+!!$      end do
+!!$   else
+!!$      gsflag = 4
+!!$   end if
+!!$end if
+!!$
+!!$88 continue
+!!$
+!!$!write(*,*) 'e',(e(i),i=0,1),gsflag
+!!$!write(*,*) (d(i),i=0,1)
+!!$!write(*,*) 'psm',(psm(i,0),i=0,1),(psm(i,1),i=0,1)
+!!$!write(*,*) 'psh',(psh(i,0),i=0,1),(psh(i,1),i=0,1)
+!!$
+!!$End subroutine getshape
 
 !-------------------------------------------------------------------------
 
