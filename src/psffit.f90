@@ -103,7 +103,10 @@ character*500 :: plot
 
 !--RRG Additions--!
 real*4::PSF_q(2,2), PSF_q4(2,2,2,2), RRG_Q(2,2)
-
+real*4::pRRG_Q2(imax, 4, irgmax), pRRG_Q4(imax, 16, irgmax)
+real*4, dimension(4,1:nparams)::pRRGfit_Q
+real*4, dimension(16,1:nparams)::pRRGfit_Q4
+character*250 RRGfileout
 ! set up default plotting
 plot = '/xwin'
 
@@ -136,6 +139,8 @@ do i=1,narg
       fileparam=arg
    case ('-out')
       fileout=arg
+   case('-RRGOut')
+      RRGfileout = arg   
    case('-pgopen')
       plot = arg
    end select
@@ -165,7 +170,10 @@ call pgsch(1.8)
 call pgslw(2)
 call pgsubp(2,1)
 
+!open output files
+open(unit = 47, file = RRGfileout, status='unknown')
 open(45,file=fileout,status='unknown')
+
 open(33,file=filecrit,status='old')
 !read(33,*) nstars,frl,frh,fwhml,fwhmh,magl,magh,frmax
 read(33,*) magl,magh,frl,frh,fwhml,fwhmh!,frmax
@@ -303,7 +311,9 @@ do im = 1,nim
          call getshape(xc,yc,flux(i),rg(i),flag(i,irg),xedge,yedge,e,psm,psh, PSF_q, PSF_q4)
          !--Correct using RRG--!
          call RRG_PSF_Correction(rg(i), PSF_Q, PSF_Q4, RRG_Q)
-         
+         !--gal_correct requires both Q and Q4
+
+
          ! uncomment the following to see raw ellipticities plotted
          !call plotit(100000,x(i),y(i),e(0),e(1))
          
@@ -317,6 +327,31 @@ do im = 1,nim
          pstar(i,1,irg) = Psminv(1) * e(0) + Psminv(2) * e(1)
          pstar(i,2,irg) = Psminv(3) * e(0) + Psminv(4) * e(1)
          
+         !--Chris 20th Nov 2013--!
+         !--Unpack Q2 and Q4 for the RRG method--!
+         pRRG_Q2(i,1,irg) = PSF_Q(1,1)
+         pRRG_Q2(i,2,irg) = PSF_Q(1,2)
+         pRRG_Q2(i,3,irg) = PSF_Q(2,1)
+         pRRG_Q2(i,4,irg) = PSF_Q(2,2)
+
+         pRRG_Q4(i,1,irg) = PSF_q4(1,1,1,1)
+         pRRG_Q4(i,2,irg) = PSF_q4(1,1,1,2)
+         pRRG_Q4(i,3,irg) = PSF_q4(1,1,2,1)
+         pRRG_Q4(i,4,irg) = PSF_q4(1,1,2,2)
+         pRRG_Q4(i,5,irg) = PSF_q4(1,2,1,1)
+         pRRG_Q4(i,6,irg) = PSF_q4(1,2,1,2)
+         pRRG_Q4(i,7,irg) = PSF_q4(1,2,2,1)
+         pRRG_Q4(i,8,irg) = PSF_q4(1,2,2,2)
+         pRRG_Q4(i,9,irg) = PSF_q4(2,1,1,1)
+         pRRG_Q4(i,10,irg) = PSF_q4(2,1,1,2)
+         pRRG_Q4(i,11,irg) = PSF_q4(2,1,2,1)
+         pRRG_Q4(i,12,irg) = PSF_q4(2,1,2,2)
+         pRRG_Q4(i,13,irg) = PSF_q4(2,2,1,1)
+         pRRG_Q4(i,14,irg) = PSF_q4(2,2,1,2)
+         pRRG_Q4(i,15,irg) = PSF_q4(2,2,2,1)
+         pRRG_Q4(i,16,irg) = PSF_q4(2,2,2,2)
+         !---End Chris Edit 20th Nov 2013----!
+
          ! uncomment the following to see p's plotted
          !call plotit(100,x(i),y(i),pstar(i,1,irg),pstar(i,2,irg))
          
@@ -333,13 +368,16 @@ do im = 1,nim
    end do
    ! reset star counter and move on to next image
    nprev = nstars
+   !     close the fits file and free the unit number
+   call ftclos(unit, status)
+   call ftfiou(unit, status)
 end do
 
 ! psffit makes a polynomial fit to the PSF distribution
 shsm = 20.0 ! give shsm an average value - properly set later
-   
+
 do irg = 1,rgmax
-   
+   print *, 'rgmax loop:', irg, rgmax
    call pgsci(1)
    call pgenv(1.0,naxes(1)*1.0,1.0,naxes(2)*1.0,1,0)
    
@@ -351,7 +389,8 @@ do irg = 1,rgmax
    end if
    
    call pglab('x','y',toplabel)
-   
+
+
    do i = 1,nstars
       p1(i) = pstar(i,1,irg)
       p2(i) = pstar(i,2,irg)
@@ -406,7 +445,38 @@ do irg = 1,rgmax
 
          ! fit a polynomial chip by chip
    
-         call polyfit(p1,p2,chipflag)
+         call polyfit(p1,p2,chipflag, pfit1, pfit2)
+            
+         !--Fit all of the moments 2 at a time--!
+         !--Chris Edit 20th Nov 2013--!
+         print *, 'Polyfitting q2'
+         call polyfit(pRRG_Q2(:,1,irg), pRRG_Q2(:,2,irg), chipflag, pRRGfit_Q(1,:), pRRGfit_Q(2,:))
+         call polyfit(pRRG_Q2(:,3,irg), pRRG_Q2(:,4,irg), chipflag, pRRGfit_Q(3,:), pRRGfit_Q(4,:))
+         
+         
+         print *, 'Polyfitting Q4'
+         call polyfit(pRRG_Q4(:,1,irg), pRRG_Q4(:,2,irg), chipflag, pRRGfit_Q4(1,:), pRRGfit_Q4(2,:))
+         call polyfit(pRRG_Q4(:,3,irg), pRRG_Q4(:,4,irg), chipflag, pRRGfit_Q4(3,:), pRRGfit_Q4(4,:))
+         call polyfit(pRRG_Q4(:,5,irg), pRRG_Q4(:,6,irg), chipflag, pRRGfit_Q4(5,:), pRRGfit_Q4(6,:))
+         call polyfit(pRRG_Q4(:,7,irg), pRRG_Q4(:,8,irg), chipflag, pRRGfit_Q4(7,:), pRRGfit_Q4(8,:))
+         call polyfit(pRRG_Q4(:,9,irg), pRRG_Q4(:,10,irg), chipflag, pRRGfit_Q4(9,:), pRRGfit_Q4(10,:))
+         call polyfit(pRRG_Q4(:,11,irg), pRRG_Q4(:,12,irg), chipflag, pRRGfit_Q4(11,:), pRRGfit_Q4(12,:))
+         call polyfit(pRRG_Q4(:,13,irg), pRRG_Q4(:,14,irg), chipflag, pRRGfit_Q4(13,:), pRRGfit_Q4(14,:))
+         call polyfit(pRRG_Q4(:,15,irg), pRRG_Q4(:,16,irg), chipflag, pRRGfit_Q4(15,:), pRRGfit_Q4(16,:))
+         
+         !--Output--!
+         print *, 'Outputting to RRG file:', RRGfileout
+         write(47,110) irg,ix,iy,shsm(irg),&
+              (pRRGfit_Q(1,j),j=1,nparams),(pRRGfit_Q(2,j),j=1,nparams),(pRRGfit_Q(3,j),j=1,nparams),(pRRGfit_Q(4,j),j=1,nparams)
+110      format(3I7, 41e15.5)
+         
+         write(47,109) irg,ix,iy,shsm(irg),&
+              (pRRGfit_Q4(1,j),j=1,nparams),(pRRGfit_Q4(2,j),j=1,nparams),(pRRGfit_Q4(3,j),j=1,nparams),(pRRGfit_Q4(4,j),j=1,nparams),&
+              (pRRGfit_Q4(5,j),j=1,nparams),(pRRGfit_Q4(6,j),j=1,nparams),(pRRGfit_Q4(7,j),j=1,nparams),(pRRGfit_Q4(8,j),j=1,nparams),&
+              (pRRGfit_Q4(9,j),j=1,nparams),(pRRGfit_Q4(10,j),j=1,nparams),(pRRGfit_Q4(11,j),j=1,nparams),(pRRGfit_Q4(12,j),j=1,nparams),&
+              (pRRGfit_Q4(13,j),j=1,nparams),(pRRGfit_Q4(14,j),j=1,nparams),(pRRGfit_Q4(15,j),j=1,nparams),(pRRGfit_Q4(16,j),j=1,nparams)
+109      format(3I7, 161e15.5)
+   !-----End Chris edit 20th Nov 2013------!
 
 !         call fitplot(nint(naxes(1)/40.0),chipflag)
          
@@ -503,7 +573,7 @@ end subroutine RRG_PSF_Correction
 !****************************************************************
 
 Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh, q, q4)
-Use Main; use Moments, only:Weighted_Intensity_Moment_0, Weighted_Intensity_Moment_2, Weighted_Intensity_Moment_4
+Use Main
 Implicit none
 
 real*4         :: xs,ys,rwindow,fluxs
@@ -842,13 +912,14 @@ End Subroutine e_scatter_plot
 ! Fitting and Statistics routines
 !********************************************************************
 
-Subroutine polyfit(p1,p2,flag)
+Subroutine polyfit(p1,p2,flag, fit1, fit2)
 use main
 implicit none
 
 integer :: i,gdstr
 real*4, dimension(1:nstars) ::p1,p2
 integer, dimension(1:nstars) :: flag
+real*4, dimension(1:nparams),intent(out) :: fit1,fit2
 
 real*4, dimension(1:nparams,1:nparams) :: covar
 real*4, dimension(1:nstars) :: xpos,ypos
@@ -858,8 +929,8 @@ real*4 :: chisq
 gdstr = 0
 sig = 0.1
 ! set starting guess equal to zeroth order average
-pfit1 = 0.0
-pfit2 = 0.0
+fit1 = 0.0
+fit2 = 0.0
 do i = 1,nstars
    if(flag(i)==0)then
       gdstr = gdstr + 1
@@ -867,24 +938,24 @@ do i = 1,nstars
       ypos(gdstr) = y(i)
       tofit1(gdstr) = p1(i)
       tofit2(gdstr) = p2(i)
-      pfit1(1) = pfit1(1) + p1(i)
-      pfit2(1) = pfit2(1) + p2(i)
+      fit1(1) = fit1(1) + p1(i)
+      fit2(1) = fit2(1) + p2(i)
    end if
 end do
 
-pfit1(1) = pfit1(1) / gdstr
-pfit2(1) = pfit2(1) / gdstr
+fit1(1) = fit1(1) / gdstr
+fit2(1) = fit2(1) / gdstr
 
 if(gdstr>10)then   
 
-   call lfit(xpos,ypos,tofit1,sig,gdstr,pfit1,ia,nparams,covar,nparams,chisq)
-   call lfit(xpos,ypos,tofit2,sig,gdstr,pfit2,ia,nparams,covar,nparams,chisq)
+   call lfit(xpos,ypos,tofit1,sig,gdstr,fit1,ia,nparams,covar,nparams,chisq)
+   call lfit(xpos,ypos,tofit2,sig,gdstr,fit2,ia,nparams,covar,nparams,chisq)
 else
    write(*,*) 'Less than 10 stars in fit, reduce nchipx, nchipy'
 end if
 
-!write(*,*) 'p1', pfit1
-!write(*,*) 'p2', pfit2
+!write(*,*) 'p1', fit1
+!write(*,*) 'p2', fit2
 
 end Subroutine polyfit
 !---------------------------------------------------------------

@@ -101,7 +101,14 @@ character*50 :: toplabel
 
 !--RRG ADDITIONS--!
 real*4::KSB_Q2(2,2), KSB_Q4(2,2,2,2)
+real*4::RRG_PSF_Q2(2,2), RRG_PSF_Q4(2,2,2,2)
+real*4, dimension(2,2):: RRG_Q2, RRG_Corr
 
+real*4, dimension(4,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q2
+real*4, dimension(16,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q4
+real*4, dimension(1:irgmax,1:10,1:10) :: shsmfact_RRG_Q2, shsmfact_RRG_Q4 
+
+character*250 RRGPSFfile
 narg=iargc()
 
 do i=1,narg
@@ -125,6 +132,8 @@ do i=1,narg
       fileparam=arg
    case ('-psf')
       filepsf=arg
+   case('-RRGpsf')
+      RRGPSFfile = arg      
    case ('-out')
       fileout=arg
    end select
@@ -152,6 +161,8 @@ open(44,file=filein,status='old')
 open(33,file=filecrit,status='old')
 open(55,file=filepsf,status='old')
 open(45,file=fileout,status='unknown')
+open(46, file = RRGPSFfile, status = 'old')
+
 
 aveshear = 0.0
 sumosq = 0.0
@@ -188,6 +199,44 @@ do i = 1,rgmax
       end do
    end do
 end do
+
+!--Read the RRG PSF file
+do i = 1,rgmax
+   do icx = 1,nchipx
+      do icy = 1,nchipy
+         read(46,*) ii,iix,iiy,shsmfact_RRG_Q2(ii,iix,iiy),&
+                    (pRRGfit_Q2(1,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q2(2,j,ii,iix,iiy),j=1,nparams),&
+                    (pRRGfit_Q2(3,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q2(4,j,ii,iix,iiy),j=1,nparams) 
+         if(i.ne.ii.or.iix.ne.icx.or.iiy.ne.icy)then
+            write(*,*) 'error reading  RRG Q2 psf file'
+            write(*,*) 'check nchipx and nchipy are correct'
+            write(*,*) i,icx,icy
+            write(*,*) ii,iix,iiy
+            stop
+         end if
+      end do
+   end do
+!end do
+!--Read in Q4 Moment
+!do i = 1,rgmax
+   do icx = 1,nchipx
+      do icy = 1,nchipy
+         read(46,*) ii,iix,iiy,shsmfact_RRG_Q4(ii,iix,iiy),&
+              (pRRGfit_Q4(1,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(2,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(3,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(4,j,ii,iix,iiy),j=1,nparams),&
+              (pRRGfit_Q4(5,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(6,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(7,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(8,j,ii,iix,iiy),j=1,nparams),&
+              (pRRGfit_Q4(9,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(10,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(11,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(12,j,ii,iix,iiy),j=1,nparams),&
+              (pRRGfit_Q4(13,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(14,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(13,j,ii,iix,iiy),j=1,nparams),(pRRGfit_Q4(16,j,ii,iix,iiy),j=1,nparams)
+         if(i.ne.ii.or.iix.ne.icx.or.iiy.ne.icy)then
+            write(*,*) 'error reading RRG Q4 psf file'
+            write(*,*) 'check nchipx and nchipy are correct'
+            write(*,*) i,icx,icy
+            write(*,*) ii,iix,iiy
+            stop
+         end if
+      end do
+   end do
+end do
+close(46)
 
 ! read criteria file
 read(33,*) i,frl,frh,fwhml,fwhmh,magl,magh,frmax
@@ -266,13 +315,32 @@ do i = 1,imax
 
          call calcp(i,irg(i),pfitted)
          
+         !--Reconstruct RRG PSF Moments--!
+         call calcp_RRG(pRRGfit_Q2, pRRGfit_Q4,i,irg(i), RRG_PSF_Q2, RRG_PSF_Q4)
+         print *, 'Reconstucted RRG PSF'
+
+         !--Apply RRG correction--!
+         print *, 'Applying Anisotropic Corr'
+         call RRG_Anisotropic_Correction(rg(i), KSB_Q2, KSB_Q4, RRG_PSF_Q2, RRG_PSF_Q4, RRG_Q2)
+         print *, 'Applying Isotroic Corr'
+         call RRG_Isotropic_Correction(rg(i), rg(i), RRG_Q2, RRG_Corr)
+         
+
+         print *, 'RRG corrected ellipticity:'
+         print *, (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2))
+
+         !--Apply KSB Correction---!
          eopsm(0) = psm(0,0)*pfitted(1)  + psm(0,1)*pfitted(2)
          eopsm(1) = psm(1,0)*pfitted(1)  + psm(1,1)*pfitted(2) 
          
          do j = 0,1
             ecor(j) = e(j) - eopsm(j)
          end do
-         
+
+         print *, 'KSB Corrected Ellipticities:', ecor
+         read(*,*)
+         !-------------------------!
+
          !Hoekstra correction can be included
          !psh = psh*(1.0- (ecor(0)**2 + ecor(1)**2)/2.0)
 
@@ -282,6 +350,10 @@ do i = 1,imax
          do j = 0,1
             shear(j) = 2.0*ecor(j)/Pgamma
          end do
+
+         print *, 'KSB Corrected shear:', shear
+         read(*,*)
+
 
          !Here are my selection criteria of what I consider to be
          !a good galaxy for the shear to be calculated for the 
@@ -338,17 +410,19 @@ end Program
 ! Authored by CAJD on 13th November 2013.
 !******************************************************************
 
-integer function factorial(n)
-  integer::n
-  
-  integer::count
-  
-  factorial = 1
-  do count = n, 1, -1
-     factorial = factorial*count
-  end do
-  return
-end function factorial
+!!$integer function factorial(n)
+!!$  integer::n
+!!$  
+!!$  integer::count
+!!$  
+!!$  factorial = 1
+!!$  do count = n, 1, -1
+!!$     factorial = factorial*count
+!!$  end do
+!!$  return
+!!$end function factorial
+!!$
+
 
 subroutine RRG_Isotropic_Correction(PSF_rwindow, rwindow, Q2, RRG_Q2)
   !--Implements equation (49) of RRG, corrects for the isotropic (guassian) part of the PSF. Q2 is the galaxy quadropole--!
@@ -370,16 +444,19 @@ subroutine RRG_Isotropic_Correction(PSF_rwindow, rwindow, Q2, RRG_Q2)
 end subroutine RRG_Isotropic_Correction
 
 subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
+  use permutation_routines
   !--Implements equation (46) of RRG to correct the galaxy quadropole moment--!
   real*4::rwindow
   real*4::Q2(2,2), PSF_Q2(2,2), PSF_Q4(2,2,2,2), Q4(2,2,2,2)
   real*4::RRG_Q2(2,2)
 
   integer::i,j,k,l, ll
-  real*4::C(2,2,2,2), Delta(2,2), CQ4(2,2,2,2),  Permutation_Set(4)
-  real*4::  Permutations(24,4)
+  real*4::C(2,2,2,2), Delta(2,2), CQ4(2,2,2,2)
+  integer::  Permutations(24,4), Permutation_Set(4)
 
 !  allocate(Permutations(factorial(size(Permutation_Set)), size(Permutation_Set))); Permutations = 0
+
+  print *, 'Doing Ani Corr'
 
   !--Calculate Corrected 4th order moment (CQ4), given in equation [50]--!
   Delta = 0.0
@@ -390,7 +467,9 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
         do k = 1, 2
            do l= 1, 2
               Permutation_Set = (/i,j,k,l/)
+              print *, 'Getting permutate'
               call permutate(Permutation_Set, Permutations)
+              print *, 'Got permutate for:', i,j,k,l
               CQ4(i,j,k,l) = Q4(i,j,k,l) - PSF_Q4(i,j,k,l)
               do ll = 1, size(Permutations,1)
                  CQ4(i,j,k,l) = CQ4(i,j,k,l) - 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),Permutations(ll,4)) + 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*PSF_Q2(Permutations(ll,3),Permutations(ll,4))
@@ -399,6 +478,7 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
         end do
      end do
   end do
+  print *, 'Got CQ4'
 
   !--Calculate Matrix C [Equation (40)]--!
   C = 0.0
@@ -411,6 +491,7 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
         end do
      end do
   end do
+  print *, 'Got C'
 
   !--Equation (46)
   do i = 1, 2
@@ -424,23 +505,25 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
         end do
      end do
   end do
+  print *, 'Corrected'
+
 
 end subroutine RRG_Anisotropic_Correction
-
-  recursive subroutine permutate(E, P)
-    integer, intent(in)  :: E(:)       ! array of objects                       
-    integer, intent(out) :: P(:,:)     ! permutations of E                      
-    integer  :: N, Nfac, i, k, S(size(P,1)/size(E), size(E)-1)
-
-    if(size(P,1) /= factorial(size(E))) stop 'Permutate - FATAL ERROR -the array of permutations (P) does not have the correct first dimension'
-    if(size(P,1) /= (size(E))) stop 'Permutate - FATAL ERROR -the array of permutations (P) does not have the correct second dimension'
- 
-    N = size(E); Nfac = size(P,1);
-    do i=1,N                           ! cases with E(i) in front               
-      if( N>1 ) call permutate((/E(:i-1), E(i+1:)/), S)
-      forall(k=1:Nfac/N) P((i-1)*Nfac/N+k,:) = (/E(i), S(k,:)/)
-    end do
-  end subroutine permutate
+!!$
+!!$  recursive subroutine permutate(E, P)
+!!$    integer, intent(in)  :: E(4)       ! array of objects                       
+!!$    integer, intent(out) :: P(24,4)     ! permutations of E                      
+!!$    integer  :: N, Nfac, i, k, S(size(P,1)/size(E), size(E)-1)
+!!$
+!!$    if(size(P,1) /= factorial(size(E))) stop 'Permutate - FATAL ERROR -the array of permutations (P) does not have the correct first dimension'
+!!$    if(size(P,1) /= (size(E))) stop 'Permutate - FATAL ERROR -the array of permutations (P) does not have the correct second dimension'
+!!$ 
+!!$    N = size(E); Nfac = size(P,1);
+!!$    do i=1,N                           ! cases with E(i) in front               
+!!$      if( N>1 ) call permutate((/E(:i-1), E(i+1:)/), S)
+!!$      forall(k=1:Nfac/N) P((i-1)*Nfac/N+k,:) = (/E(i), S(k,:)/)
+!!$    end do
+!!$  end subroutine permutate
 
 !!$!****************************************************************
 !!$! KSB nuts and bolts
@@ -631,6 +714,43 @@ do j = 1,nparams
 end do
 
 end Subroutine calcp
+
+!----calp subroutine edit for the RRG method--------!
+Subroutine calcp_RRG(fit_Q2, fit_Q4,i,k,pQ2, pQ4)
+Use Main
+Implicit none
+
+real*4, intent(in)::fit_Q2(4,1:nparams,1:irgmax,1:10,1:10), fit_Q4(16,1:nparams,1:irgmax,1:10,1:10)
+
+integer,intent(in)         :: i
+integer :: j,k
+real*4          :: afunc(1:nparams)
+Real*4, dimension(1:4) ::pfitted_Q2
+Real*4, dimension(1:16) ::pfitted_Q4
+real*4, intent(out)::pQ2(2,2), pQ4(2,2,2,2)
+
+call funcs(x(i),y(i),afunc,nparams)
+
+pfitted_Q2 = 0.0
+pfitted_Q4 = 0.0
+
+do j = 1,nparams
+   pfitted_Q2(:) = pfitted_Q2(:) +  ia(j)*fit_Q2(:,j,k,ixchip(i),iychip(i))*afunc(j)
+   pfitted_Q4(:) = pfitted_Q4(:) +  ia(j)*fit_Q4(:,j,k,ixchip(i),iychip(i))*afunc(j)
+!   pfitted(1) = pfitted(1) + ia(j)*pfit1(j,k,ixchip(i),iychip(i))*afunc(j)
+!   pfitted(2) = pfitted(2) + ia(j)*pfit2(j,k,ixchip(i),iychip(i))*afunc(j)
+end do
+
+!---Restructure----!
+pQ2(1,1) = pfitted_Q2(1); pQ2(1,2) = pfitted_Q2(2); pQ2(2,1) = pfitted_Q2(3); pQ2(2,2) = pfitted_Q2(4)
+
+pQ4(1,1,1,1) = pfitted_Q4(1); pQ4(1,1,1,2) = pfitted_Q4(2); pQ4(1,1,2,1) = pfitted_Q4(3); pQ4(1,1,2,2) = pfitted_Q4(4)
+pQ4(1,2,1,1) = pfitted_Q4(5); pQ4(1,2,1,2) = pfitted_Q4(6); pQ4(1,2,2,1) = pfitted_Q4(7); pQ4(1,2,2,2) = pfitted_Q4(8)
+pQ4(2,1,1,1) = pfitted_Q4(9); pQ4(2,1,1,2) = pfitted_Q4(10); pQ4(2,1,2,1) = pfitted_Q4(11); pQ4(2,1,2,2) = pfitted_Q4(12)
+pQ4(2,2,1,1) = pfitted_Q4(13); pQ4(2,2,1,2) = pfitted_Q4(14); pQ4(2,2,2,1) = pfitted_Q4(15); pQ4(2,2,2,2) = pfitted_Q4(16)
+
+end Subroutine calcp_RRG
+
 !-----------------------------------------------------------------------
 
 
