@@ -164,6 +164,8 @@ open(45,file=fileout,status='unknown')
 open(46, file = RRGPSFfile, status = 'old')
 
 
+print *, 'Reading in RRG PSF file from:', RRGPSFfile
+
 aveshear = 0.0
 sumosq = 0.0
 kk = 0
@@ -311,23 +313,27 @@ do i = 1,imax
          ! getshape is the nuts and bolts of KSB
                   
          KSB_Q2 = 0.0; KSB_Q4 = 0.0
-         call getshape(xc,yc,flux(i),rg(i),flag(i),xedge,yedge,e,psm,psh, KSB_Q2, KSB_Q4)
+         call getshape(xc,yc,flux(i),rg(i),flag(i),xedge,yedge,e,psm,psh, KSB_Q2, KSB_Q4, .true.)
 
          call calcp(i,irg(i),pfitted)
          
          !--Reconstruct RRG PSF Moments--!
+         RRG_PSF_Q2  =0.0; RRG_PSF_Q4 = 0.0
          call calcp_RRG(pRRGfit_Q2, pRRGfit_Q4,i,irg(i), RRG_PSF_Q2, RRG_PSF_Q4)
-         print *, 'Reconstucted RRG PSF'
+
+         !print *, 'PSF Sizes:', RRG_PSF_Q2(1,1)+RRG_PSF_Q2(2,2), RRG_PSF_Q2(1,1)*RRG_PSF_Q2(2,2) - RRG_PSF_Q2(1,2)*RRG_Q2(2,1)
+         !print *, 'PSFQ4:', RRG_PSF_Q4
 
          !--Apply RRG correction--!
-         print *, 'Applying Anisotropic Corr'
+         RRG_Q2 = 0.0;
          call RRG_Anisotropic_Correction(rg(i), KSB_Q2, KSB_Q4, RRG_PSF_Q2, RRG_PSF_Q4, RRG_Q2)
-         print *, 'Applying Isotroic Corr'
-         call RRG_Isotropic_Correction(rg(i), rg(i), RRG_Q2, RRG_Corr)
+         !print *, 'RRG Sizes:', RRG_Q2(1,1)+RRG_Q2(2,2), RRG_Q2(1,1)*RRG_Q2(2,2) - RRG_Q2(1,2)*RRG_Q2(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
          
-
-         print *, 'RRG corrected ellipticity:'
-         print *, (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2))
+         call RRG_Isotropic_Correction(rg(i), rg(i), RRG_Q2, RRG_Corr)
+         !print *, 'RRG Sizes, Corrected:', RRG_Corr(1,1)+RRG_Corr(2,2), RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
+         
+         !print *, 'RRG corrected ellipticity:'
+         !print *, (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2))
 
          !--Apply KSB Correction---!
          eopsm(0) = psm(0,0)*pfitted(1)  + psm(0,1)*pfitted(2)
@@ -337,8 +343,8 @@ do i = 1,imax
             ecor(j) = e(j) - eopsm(j)
          end do
 
-         print *, 'KSB Corrected Ellipticities:', ecor
-         read(*,*)
+!!$         print *, 'KSB Corrected Ellipticities:', ecor
+!!$         read(*,*)
          !-------------------------!
 
          !Hoekstra correction can be included
@@ -351,8 +357,20 @@ do i = 1,imax
             shear(j) = 2.0*ecor(j)/Pgamma
          end do
 
-         print *, 'KSB Corrected shear:', shear
-         read(*,*)
+!!$         print *, 'KSB Corrected shear:', shear
+!!$         read(*,*)
+
+
+         !--Comparison of Ellipticity Measures--!
+         OPEN(80, FILE = 'Corrected_Ellipticity_Comparison.dat', access = 'APPEND')
+         WRITE(80,'(8(E20.7,x))') (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2)), shear, ecor, (KSB_Q2(1,1)-KSB_Q2(2,2))/(KSB_Q2(1,1)+KSB_Q2(2,2)), (KSB_Q2(2,1)+KSB_Q2(1,2))/(KSB_Q2(1,1)+KSB_Q2(2,2))
+         CLOSE(80)
+         !---Comparison of Size Measures--!
+         OPEN(81, FILE = 'Corrected_Size_Comparison.dat', access = 'APPEND')
+         WRITE(81,'(4(E20.7,x))') RRG_Corr(1,1)+RRG_Corr(2,2), RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
+!(RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2)), shear, ecor
+         CLOSE(81)
+
 
 
          !Here are my selection criteria of what I consider to be
@@ -432,12 +450,17 @@ subroutine RRG_Isotropic_Correction(PSF_rwindow, rwindow, Q2, RRG_Q2)
   real*4, intent(out):: RRG_Q2(2,2)
 
   integer::i,j, Delta(2,2)
+
+  real*4::g_w
+
+  g_w = ((1.e0_4/(PSF_rwindow*PSF_rwindow))+(1.e0_4/(rwindow*rwindow)))**(-0.5e0_4)
   
   Delta = 0.0; Delta(1,1) = 1.0; Delta(2,2) = 1.0
   
   do i = 1, 2
      do j = 1, 2
-        RRG_Q2(i,j) = ((PSF_rwindow/rwindow)**4.0)*(Q2(i,j) - rwindow*rwindow*Delta(i,j))
+        RRG_Q2(i,j) = ((PSF_rwindow/g_w)**4.0)*(Q2(i,j) - g_w*g_w*Delta(i,j))
+        !RRG_Q2(i,j) = ((PSF_rwindow/rwindow)**4.0)*(Q2(i,j) - rwindow*rwindow*Delta(i,j))
      end do
   end do
 
@@ -450,35 +473,42 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
   real*4::Q2(2,2), PSF_Q2(2,2), PSF_Q4(2,2,2,2), Q4(2,2,2,2)
   real*4::RRG_Q2(2,2)
 
+
   integer::i,j,k,l, ll
   real*4::C(2,2,2,2), Delta(2,2), CQ4(2,2,2,2)
   integer::  Permutations(24,4), Permutation_Set(4)
 
+  real*4::PSF_Q2_A(2,2)
+
 !  allocate(Permutations(factorial(size(Permutation_Set)), size(Permutation_Set))); Permutations = 0
-
-  print *, 'Doing Ani Corr'
-
-  !--Calculate Corrected 4th order moment (CQ4), given in equation [50]--!
   Delta = 0.0
   Delta(1,1) = 1.0; Delta(2,2) = 1.0
+
+  !Isolate Anisotropic Part fo the PSF Quad Moment
+  !--Assumes PSF_rwindow is the same as the window for the galaxy
+  PSF_Q2_A = PSF_Q2 - (rwindow*rwindow)*Delta
+
+  !--Calculate Corrected 4th order moment (CQ4), given in equation [50]--!
   CQ4 = 0.0
-  do i = 1, 2
-     do j = 1, 2
-        do k = 1, 2
-           do l= 1, 2
-              Permutation_Set = (/i,j,k,l/)
-              print *, 'Getting permutate'
-              call permutate(Permutation_Set, Permutations)
-              print *, 'Got permutate for:', i,j,k,l
-              CQ4(i,j,k,l) = Q4(i,j,k,l) - PSF_Q4(i,j,k,l)
-              do ll = 1, size(Permutations,1)
-                 CQ4(i,j,k,l) = CQ4(i,j,k,l) - 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),Permutations(ll,4)) + 6.e0_4*PSF_Q2(Permutations(ll,1), Permutations(ll,2))*PSF_Q2(Permutations(ll,3),Permutations(ll,4))
-              end do
-           end do
-        end do
-     end do
-  end do
-  print *, 'Got CQ4'
+  CQ4 = Q4
+!!$
+!!$  do i = 1, 2
+!!$     do j = 1, 2
+!!$        do k = 1, 2
+!!$           do l= 1, 2
+!!$              Permutation_Set = (/i,j,k,l/)
+!!$              call permutate(Permutation_Set, Permutations)
+!!$              CQ4(i,j,k,l) = Q4(i,j,k,l) - PSF_Q4(i,j,k,l)
+!!$              !--Sum over all n! permutations  - facotr of 2 in the first?
+!!$               CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*Q2(Permutations(1,3),Permutations(1,4)) + (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*PSF_Q2_A(Permutations(1,3),Permutations(1,4)) !-Extra factor of 2, can be removed
+!!$              do ll = 1, size(Permutations,1)
+!!$                 CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),PermutAtions(ll,4)) + (6.e0_4/24.0_4)*PSF_Q2_a(Permutations(ll,1), Permutations(ll,2))*PSF_Q2_A(Permutations(ll,3),Permutations(ll,4))
+!!$                 !CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),Permutations(ll,4)) + (6.e0_4/24.0_4)*PSF_Q2_a(Permutations(ll,1), Permutations(ll,2))*PSF_Q2_A(Permutations(ll,3),Permutations(ll,4))
+!!$              end do
+!!$           end do
+!!$        end do
+!!$     end do
+!!$  end do
 
   !--Calculate Matrix C [Equation (40)]--!
   C = 0.0
@@ -486,12 +516,14 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
      do j = 1, 2
         do k = 1, 2
            do l = 1, 2
-              C(i,j,k,l) = Delta(i,k)*Delta(j,k) -(1.e0_4/(rwindow*rwindow))*(Q2(k,i)*Delta(j,l) + Q2(k,j)*Delta(i,l)) + (1.e0_4/(2.e0_4*rwindow*rwindow))*(CQ4(i,j,k,l) - Q2(i,j)*Q2(k,l))
+              !-Symmetriser - facotr of 2 in q2delta + q2delta?
+              C(i,j,k,l) = Delta(i,k)*Delta(j,l) -(1.e0_4/(rwindow*rwindow))*(Q2(k,i)*Delta(j,l) + Q2(k,j)*Delta(i,l)) + (1.e0_4/(2.e0_4*rwindow*rwindow*rwindow*rwindow))*(CQ4(i,j,k,l) - Q2(i,j)*Q2(k,l))
+!              C(i,j,k,l) = Delta(i,k)*Delta(j,l) -(1.e0_4/(rwindow*rwindow))*(2.e0_4*Q2(k,i)*Delta(j,l) + Q2(k,j)*Delta(i,l)) + (1.e0_4/(2.e0_4*rwindow*rwindow*rwindow*rwindow))*(CQ4(i,j,k,l) - Q2(i,j)*Q2(k,l))
            end do
         end do
      end do
   end do
-  print *, 'Got C'
+
 
   !--Equation (46)
   do i = 1, 2
@@ -500,12 +532,12 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
         !--Summation over k,l assumed--!
         do k = 1, 2
            do l = 1, 2
-              RRG_Q2(i,j) = RRG_Q2(i,j) - C(i,j,k,l)*PSF_Q2(k,l)
+              RRG_Q2(i,j) = RRG_Q2(i,j) - C(i,j,k,l)*PSF_Q2_A(k,l)
+              !RRG_Q2(i,j) = RRG_Q2(i,j) - C(i,j,k,l)*PSF_Q2(k,l)
            end do
         end do
      end do
   end do
-  print *, 'Corrected'
 
 
 end subroutine RRG_Anisotropic_Correction

@@ -6,7 +6,7 @@ module Calculate_Moments
 
 contains
 
-Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh, q, q4)
+Subroutine getshape(xs,ys,fluxs,rwindow,gsflag,xedge,yedge,e,psm,psh, q, q4, Renormalise_Moments)
 Use Main; use Moments, only:Weighted_Intensity_Moment_0, Weighted_Intensity_Moment_2, Weighted_Intensity_Moment_4
 Implicit none
 
@@ -14,6 +14,7 @@ real*4         :: xs,ys,rwindow,fluxs
 integer        :: istar,gsflag
 real*4         :: xedge,yedge
 real*4,intent(out)         :: q(1:2,1:2), q4(2,2,2,2)
+logical,intent(in)::Renormalise_Moments
 
 real*4                        :: denom
 integer                       :: i0, j0, i, j, di, dj, rmax, l, m
@@ -170,8 +171,10 @@ else
 end if
 
 !--Renormalise--!                                                                                                                         
-q = q/q0
-q4 = q4/q0
+if(Renormalise_Moments) then
+   q = q/q0
+   q4 = q4/q0
+end if
 
 End Subroutine getshape
 
