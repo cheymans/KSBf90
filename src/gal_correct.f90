@@ -72,7 +72,7 @@ integer iargc,narg
 
 ! in/out files
 character*250 filein, fileout,filepsf, filefits,filecrit, fileparam
-character*1000 line,string
+character*1000 line,string, string_Size
 
 ! data
 real*4, dimension(1:1000)  :: catalogue
@@ -107,6 +107,8 @@ real*4, dimension(2,2):: RRG_Q2, RRG_Corr
 real*4, dimension(4,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q2
 real*4, dimension(16,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q4
 real*4, dimension(1:irgmax,1:10,1:10) :: shsmfact_RRG_Q2, shsmfact_RRG_Q4 
+
+real*4::RRG_Size(2)
 
 character*250 RRGPSFfile
 narg=iargc()
@@ -258,6 +260,8 @@ do i = 1,imax
          write(45,'(a)') '#  +4 e1_cor      KSBf90 output'
          write(45,'(a)') '#  +5 e2_cor      KSBf90 output'
          write(45,'(a)') '#  +6 pgamma      KSBf90 output'
+         write(45,'(a)') '#  +7 RRG Size(Tr[Q])      KSBf90 output'
+         write(45,'(a)') '#  +8 RRG Size(det[Q])      KSBf90 output'
          header = 1
       end if
 
@@ -360,6 +364,11 @@ do i = 1,imax
 !!$         print *, 'KSB Corrected shear:', shear
 !!$         read(*,*)
 
+         !--Assign Size Measures from Corrected RRG Moments--!
+         !--Tr[Q], det[Q]--!
+         !--Note that moments already normalised by Q_0--!
+         RRG_Size(1) = sqrt(RRG_Corr(1,1)+RRG_Corr(2,2))
+         RRG_Size(2) = (RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1))**(0.25e0_4)
 
          !--Comparison of Ellipticity Measures--!
          OPEN(80, FILE = 'Corrected_Ellipticity_Comparison.dat', access = 'APPEND')
@@ -370,7 +379,6 @@ do i = 1,imax
          WRITE(81,'(4(E20.7,x))') RRG_Corr(1,1)+RRG_Corr(2,2), RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
 !(RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2)), shear, ecor
          CLOSE(81)
-
 
 
          !Here are my selection criteria of what I consider to be
@@ -390,9 +398,12 @@ do i = 1,imax
          end if
       
          if(flag(i)==0.and.abs(e(0))<0.5.and.abs(e(1))<0.5)then
+            !--Original Shape appending--!
             write(string,102) rg(i), e(0), e(1), ecor(0), ecor(1), Pgamma
 102         format(f8.2,5f10.4)
-            write(45,'(a)') trim(line)// trim(string)
+            !--CAJD: 2Dec Size Appending--!
+            write(string_Size,'(2(f10.4))') RRG_Size(1), RRG_Size(2)
+            write(45,'(a)') trim(line)// trim(string) // trim(string_Size)
          end if
       end if
    else
@@ -500,7 +511,7 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
 !!$              call permutate(Permutation_Set, Permutations)
 !!$              CQ4(i,j,k,l) = Q4(i,j,k,l) - PSF_Q4(i,j,k,l)
 !!$              !--Sum over all n! permutations  - facotr of 2 in the first?
-!!$               CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*Q2(Permutations(1,3),Permutations(1,4)) + (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*PSF_Q2_A(Permutations(1,3),Permutations(1,4)) !-Extra factor of 2, can be removed
+!!$!               CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*Q2(Permutations(1,3),Permutations(1,4)) + (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(1,1), Permutations(1,2))*PSF_Q2_A(Permutations(1,3),Permutations(1,4)) !-Extra factor of 2, can be removed
 !!$              do ll = 1, size(Permutations,1)
 !!$                 CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),PermutAtions(ll,4)) + (6.e0_4/24.0_4)*PSF_Q2_a(Permutations(ll,1), Permutations(ll,2))*PSF_Q2_A(Permutations(ll,3),Permutations(ll,4))
 !!$                 !CQ4(i,j,k,l) = CQ4(i,j,k,l) - (6.e0_4/24.e0_4)*PSF_Q2_A(Permutations(ll,1), Permutations(ll,2))*Q2(Permutations(ll,3),Permutations(ll,4)) + (6.e0_4/24.0_4)*PSF_Q2_a(Permutations(ll,1), Permutations(ll,2))*PSF_Q2_A(Permutations(ll,3),Permutations(ll,4))
