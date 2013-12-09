@@ -71,7 +71,7 @@ character*150 arg,opt
 integer iargc,narg
 
 ! in/out files
-character*250 filein, fileout,filepsf, filefits,filecrit, fileparam
+character*250 filein, fileout,filepsf, filefits,filecrit, fileparam, filePSF_FWHMin
 character*1000 line,string, string_Size
 
 ! data
@@ -108,9 +108,14 @@ real*4, dimension(4,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q2
 real*4, dimension(16,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q4
 real*4, dimension(1:irgmax,1:10,1:10) :: shsmfact_RRG_Q2, shsmfact_RRG_Q4 
 
-real*4::RRG_Size(2)
+real*4::RRG_Size(2), RRG_e(2)
 
 character*250 RRGPSFfile
+real*4::PSF_FWHM
+real*4::RRG_Susceptibility_Factor
+
+logical::here
+
 narg=iargc()
 
 do i=1,narg
@@ -138,6 +143,8 @@ do i=1,narg
       RRGPSFfile = arg      
    case ('-out')
       fileout=arg
+   case('-PSF_FWHM')
+      filePSF_FWHMin = arg
    end select
 
 enddo
@@ -165,8 +172,18 @@ open(55,file=filepsf,status='old')
 open(45,file=fileout,status='unknown')
 open(46, file = RRGPSFfile, status = 'old')
 
+inquire(file = 'Corrected_Ellipticity_Comparison.dat', exist = here)
+if(here) call system('rm Corrected_Ellipticity_Comparison.dat')
+inquire(file = 'Corrected_Size_Comparison.dat', exist = here)
+if(here) call system('rm Corrected_Size_Comparison.dat')
 
 print *, 'Reading in RRG PSF file from:', RRGPSFfile
+
+!--Read in the PSF_FWHM--!
+open(57, file = filePSF_FWHMin, status = 'old')
+read(57,*) PSF_FWHM
+close(57)
+print *, 'Using PSF_FWHM:', PSF_FWHM
 
 aveshear = 0.0
 sumosq = 0.0
@@ -314,8 +331,7 @@ do i = 1,imax
          !   call pgsci(6)
          !   call pgpt(1,xc,yc,4)
          
-         ! getshape is the nuts and bolts of KSB
-                  
+         ! getshape is the nuts and bolts of KSB                  
          KSB_Q2 = 0.0; KSB_Q4 = 0.0
          call getshape(xc,yc,flux(i),rg(i),flag(i),xedge,yedge,e,psm,psh, KSB_Q2, KSB_Q4, .true.)
 
@@ -325,19 +341,10 @@ do i = 1,imax
          RRG_PSF_Q2  =0.0; RRG_PSF_Q4 = 0.0
          call calcp_RRG(pRRGfit_Q2, pRRGfit_Q4,i,irg(i), RRG_PSF_Q2, RRG_PSF_Q4)
 
-         !print *, 'PSF Sizes:', RRG_PSF_Q2(1,1)+RRG_PSF_Q2(2,2), RRG_PSF_Q2(1,1)*RRG_PSF_Q2(2,2) - RRG_PSF_Q2(1,2)*RRG_Q2(2,1)
-         !print *, 'PSFQ4:', RRG_PSF_Q4
-
          !--Apply RRG correction--!
          RRG_Q2 = 0.0;
-         call RRG_Anisotropic_Correction(rg(i), KSB_Q2, KSB_Q4, RRG_PSF_Q2, RRG_PSF_Q4, RRG_Q2)
-         !print *, 'RRG Sizes:', RRG_Q2(1,1)+RRG_Q2(2,2), RRG_Q2(1,1)*RRG_Q2(2,2) - RRG_Q2(1,2)*RRG_Q2(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
-         
-         call RRG_Isotropic_Correction(rg(i), rg(i), RRG_Q2, RRG_Corr)
-         !print *, 'RRG Sizes, Corrected:', RRG_Corr(1,1)+RRG_Corr(2,2), RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
-         
-         !print *, 'RRG corrected ellipticity:'
-         !print *, (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2))
+         call RRG_Anisotropic_Correction(rg(i), PSF_FWHM/2.355e0_4, KSB_Q2, KSB_Q4, RRG_PSF_Q2, RRG_PSF_Q4, RRG_Q2)         
+         call RRG_Isotropic_Correction(PSF_FWHM/2.355e0_4, rg(i), RRG_Q2, RRG_Corr)!rg(i)
 
          !--Apply KSB Correction---!
          eopsm(0) = psm(0,0)*pfitted(1)  + psm(0,1)*pfitted(2)
@@ -347,10 +354,6 @@ do i = 1,imax
             ecor(j) = e(j) - eopsm(j)
          end do
 
-!!$         print *, 'KSB Corrected Ellipticities:', ecor
-!!$         read(*,*)
-         !-------------------------!
-
          !Hoekstra correction can be included
          !psh = psh*(1.0- (ecor(0)**2 + ecor(1)**2)/2.0)
 
@@ -358,11 +361,8 @@ do i = 1,imax
                 + (psh(1,1) - psm(1,1)*shsmfact(irg(i),ixchip(i),iychip(i))) 
          
          do j = 0,1
-            shear(j) = 2.0*ecor(j)/Pgamma
+            shear(j) = 2.0*ecor(j)/Pgamma 
          end do
-
-!!$         print *, 'KSB Corrected shear:', shear
-!!$         read(*,*)
 
          !--Assign Size Measures from Corrected RRG Moments--!
          !--Tr[Q], det[Q]--!
@@ -370,16 +370,26 @@ do i = 1,imax
          RRG_Size(1) = sqrt(RRG_Corr(1,1)+RRG_Corr(2,2))
          RRG_Size(2) = (RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1))**(0.25e0_4)
 
-         !--Comparison of Ellipticity Measures--!
-         OPEN(80, FILE = 'Corrected_Ellipticity_Comparison.dat', access = 'APPEND')
-         WRITE(80,'(8(E20.7,x))') (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2)), shear, ecor, (KSB_Q2(1,1)-KSB_Q2(2,2))/(KSB_Q2(1,1)+KSB_Q2(2,2)), (KSB_Q2(2,1)+KSB_Q2(1,2))/(KSB_Q2(1,1)+KSB_Q2(2,2))
-         CLOSE(80)
-         !---Comparison of Size Measures--!
-         OPEN(81, FILE = 'Corrected_Size_Comparison.dat', access = 'APPEND')
-         WRITE(81,'(4(E20.7,x))') RRG_Corr(1,1)+RRG_Corr(2,2), RRG_Corr(1,1)*RRG_Corr(2,2) - RRG_Corr(1,2)*RRG_Corr(2,1), KSB_Q2(1,1)+KSB_Q2(2,2), KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1)
-!(RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2)), (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2)), shear, ecor
-         CLOSE(81)
+         RRG_e(1) = (RRG_Corr(1,1)-RRG_Corr(2,2))/(RRG_Corr(1,1)+RRG_Corr(2,2))
+         RRG_e(2) = (RRG_Corr(1,2) + RRG_Corr(2,1))/(RRG_Corr(1,1)+RRG_Corr(2,2))
+         !--Correct using the Signal_to_Noise dependent responsivity correction of Leauthaud et al 2007, COSMOS, Equation (13)--!
+         RRG_Susceptibility_Factor = 1.125e0_4 +0.04e0_4*atan((SN(i)-17.e0_4)/4.e0_4) 
+         RRG_e = RRG_e/RRG_Susceptibility_Factor
 
+         !--Comparison of Ellipticity Measures--!
+         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=10) then
+!            print *, 'PGamma:', PGamma
+            
+            OPEN(80, FILE = 'Corrected_Ellipticity_Comparison.dat', access = 'APPEND')
+            WRITE(80,'(8(E20.7,x))') RRG_e, shear, ecor, (KSB_Q2(1,1)-KSB_Q2(2,2))/(KSB_Q2(1,1)+KSB_Q2(2,2)), (KSB_Q2(2,1)+KSB_Q2(1,2))/(KSB_Q2(1,1)+KSB_Q2(2,2))
+            CLOSE(80)
+            !---Comparison of Size Measures--!
+            if(all(RRG_Size > 0.e0_4) .and. all(isNAN(RRG_Size) == .false.)) then
+               OPEN(81, FILE = 'Corrected_Size_Comparison.dat', access = 'APPEND')
+               WRITE(81,'(4(E20.7,x))') RRG_Size(1),RRG_Size(2), sqrt(KSB_Q2(1,1)+KSB_Q2(2,2)), (KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1))**0.25e0_4
+               CLOSE(81)
+            end if
+         end if
 
          !Here are my selection criteria of what I consider to be
          !a good galaxy for the shear to be calculated for the 
@@ -396,8 +406,9 @@ do i = 1,imax
 !            write(45,'(4e15.5,I4)') x(i),y(i),shear(0),shear(1),j
 
          end if
-      
-         if(flag(i)==0.and.abs(e(0))<0.5.and.abs(e(1))<0.5)then
+ 
+         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=10 .and. all(RRG_Size > 0.).and. all(isNAN(RRG_Size) == .false.)) then
+!         if(flag(i)==0.and.abs(e(0))<0.5.and.abs(e(1))<0.5)then
             !--Original Shape appending--!
             write(string,102) rg(i), e(0), e(1), ecor(0), ecor(1), Pgamma
 102         format(f8.2,5f10.4)
@@ -453,34 +464,35 @@ end Program
 !!$
 
 
-subroutine RRG_Isotropic_Correction(PSF_rwindow, rwindow, Q2, RRG_Q2)
+subroutine RRG_Isotropic_Correction(PSF_Size, rwindow, Q2_IN, RRG_Q2_OUT)
   !--Implements equation (49) of RRG, corrects for the isotropic (guassian) part of the PSF. Q2 is the galaxy quadropole--!
   !--Note: Does this need implemented before/after the anisotropic - probably after--!
-  real*4,intent(in)::PSF_rwindow, rwindow
-  real*4, intent(in)::Q2(2,2)
-  real*4, intent(out):: RRG_Q2(2,2)
+  real*4,intent(in)::PSF_Size, rwindow
+  real*4, intent(in)::Q2_IN(2,2)
+  real*4, intent(out):: RRG_Q2_OUT(2,2)
 
   integer::i,j, Delta(2,2)
 
   real*4::g_w
 
-  g_w = ((1.e0_4/(PSF_rwindow*PSF_rwindow))+(1.e0_4/(rwindow*rwindow)))**(-0.5e0_4)
+  g_w = (PSF_Size*rwindow)/sqrt(PSF_Size*PSF_Size + rwindow*rwindow)
   
   Delta = 0.0; Delta(1,1) = 1.0; Delta(2,2) = 1.0
   
+  RRG_Q2_OUT = 0.e0_4
   do i = 1, 2
      do j = 1, 2
-        RRG_Q2(i,j) = ((PSF_rwindow/g_w)**4.0)*(Q2(i,j) - g_w*g_w*Delta(i,j))
-        !RRG_Q2(i,j) = ((PSF_rwindow/rwindow)**4.0)*(Q2(i,j) - rwindow*rwindow*Delta(i,j))
+        !RRG_Q2_Out(i,j) = Q2_In(i,j)
+        RRG_Q2_OUT(i,j) = ((PSF_Size/g_w)**4.0)*(Q2_IN(i,j) - g_w*g_w*Delta(i,j))
      end do
   end do
 
 end subroutine RRG_Isotropic_Correction
 
-subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
+subroutine RRG_Anisotropic_Correction(rwindow, PSF_Size, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
   use permutation_routines
   !--Implements equation (46) of RRG to correct the galaxy quadropole moment--!
-  real*4::rwindow
+  real*4::rwindow, psf_size
   real*4::Q2(2,2), PSF_Q2(2,2), PSF_Q4(2,2,2,2), Q4(2,2,2,2)
   real*4::RRG_Q2(2,2)
 
@@ -491,13 +503,12 @@ subroutine RRG_Anisotropic_Correction(rwindow, Q2, Q4, PSF_Q2, PSF_Q4, RRG_Q2)
 
   real*4::PSF_Q2_A(2,2)
 
-!  allocate(Permutations(factorial(size(Permutation_Set)), size(Permutation_Set))); Permutations = 0
   Delta = 0.0
   Delta(1,1) = 1.0; Delta(2,2) = 1.0
 
-  !Isolate Anisotropic Part fo the PSF Quad Moment
-  !--Assumes PSF_rwindow is the same as the window for the galaxy
-  PSF_Q2_A = PSF_Q2 - (rwindow*rwindow)*Delta
+  !Isolate Anisotropic Part of the PSF Quad Moment
+  !PSF_Q2_A = PSF_Q2 - (rwindow*rwindow)*Delta
+  PSF_Q2_A = PSF_Q2 - (PSF_Size*PSF_Size)*Delta
 
   !--Calculate Corrected 4th order moment (CQ4), given in equation [50]--!
   CQ4 = 0.0

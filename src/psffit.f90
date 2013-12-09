@@ -20,6 +20,8 @@ parameter (imax=1e4)
 real*4, dimension(1:imax) :: mag,rg,fr,fwhm
 real*4, dimension(1:imax) :: x,y,flux
 integer, dimension(1:imax) :: ixchip,iychip
+real*4::Mean_FWHM
+
 
 !fitsio parameters
 Integer, Dimension(1:2)    :: naxes 
@@ -72,7 +74,7 @@ integer :: nsc
 real*4 :: xccd,yccd
 
 ! in/out files
-character*250 filein, fileout,filecrit, filefits, fileparam,imfile,catfile
+character*250 filein, fileout,filecrit, filefits, fileparam,imfile,catfile, fileFWHMout
 character*1500 line
 
 ! data
@@ -143,6 +145,8 @@ do i=1,narg
       RRGfileout = arg   
    case('-pgopen')
       plot = arg
+   case('-FWHM')
+      fileFWHMout = arg
    end select
 
 enddo
@@ -516,6 +520,22 @@ print *, 'Finshed Loop'
 
 ! this plots how the PSF ellipticity varies with a different weighting
 ! radius rg
+
+!--Calculate and output the average FWHM for the stars--!
+Mean_FWHM = 0.e0_4; jj = 0
+do i = 1, size(fwhm)
+   if(fwhm(i) <= 0.e0_4) cycle
+   jj = jj + 1
+   Mean_FWHM = Mean_FWHM + fwhm(i)
+end do
+Mean_FWHM = Mean_FWHM/jj
+
+print *, 'Mean FWHM is:', Mean_FWHM
+
+open(41, file = fileFWHMout, status = 'unknown')
+write(41,*) mean_fwhm
+close(41)
+!--------------------------------------------------------!
 
 call plot_rg_variation
 print *, 'Done plot_rg_variation'
