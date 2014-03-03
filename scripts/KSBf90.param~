@@ -1,0 +1,21 @@
+#
+# KSBf90 parameter file
+# for STAGES
+#
+# SExtractor catalogue information
+#
+-x  	9 	# x column in SExtractor cat
+-y 	10	# y column in SExtractor cat
+-mag 	4	# mag column in SExtractor cat
+-fr 	20	# fr column in SExtractor cat
+-fwhm 	21	# fwhm column in SExtractor cat	
+-flux   2       # flux column in SExtractor cat	- must be followed by fluxerr
+-ntot 	23	# total number of columns in SExtractor cat, max=100
+#
+# PSF fitting parameters
+#
+-rgmax 	20	# Number of different rg scales PSF measured and fit with
+-order 	3    	# PSF polynomial model order, 0,1,2,3 implemented
+-nchipx 1  	# Number of CCD chips to fit in the x direction
+-nchipy 1  	# Number of chips to fit in the y direction
+-back 	0.0     # Subtract off flat background sky of amplitude back

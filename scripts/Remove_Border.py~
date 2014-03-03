@@ -1,0 +1,16 @@
+### Python code to remove overlap regions according to the 0/1 value in the border files ###
+
+
+border_Dir = '/disk1/ps1/cech/STAGES/RRG_update/images/border/'
+border_Head = 'a901-'
+border_Tail = '-border.fits.gz'
+
+tile_Range = [1, 80]
+
+for tile in range(tile_Range[0], tile_Range[1]+1):
+    if(tile < 10):
+        border_File = border_Head+'0'+str(tile)+border_Tail
+    else:
+        border_File = border_Head+str(tile)+border_Tail
+
+    print border_File

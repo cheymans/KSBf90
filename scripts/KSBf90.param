@@ -15,7 +15,7 @@
 # PSF fitting parameters
 #
 -rgmax 	20	# Number of different rg scales PSF measured and fit with
--order 	2    	# PSF polynomial model order, 0,1,2,3 implemented
+-order 	1    	# PSF polynomial model order, 0,1,2,3 implemented
 -nchipx 1  	# Number of CCD chips to fit in the x direction
 -nchipy 1  	# Number of chips to fit in the y direction
 -back 	0.0     # Subtract off flat background sky of amplitude back

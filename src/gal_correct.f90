@@ -72,7 +72,7 @@ integer iargc,narg
 
 ! in/out files
 character*250 filein, fileout,filepsf, filefits,filecrit, fileparam, filePSF_FWHMin
-character*1000 line,string, string_Size
+character*1000 line,string, string_RRGSize, string_KSBSize
 
 ! data
 real*4, dimension(1:1000)  :: catalogue
@@ -80,6 +80,7 @@ real*4 ::xc,yc,xedge,yedge
 integer, dimension(1:imax) :: flag
 real*4:: frl,frh,fwhml,fwhmh,magl,magh,frmax
 real*4 :: rgbin
+real*4::rg_max, rg_min
 
 ! getshapes output
 real*4                  :: e(0:1),ecor(0:1),shear(0:1), Pgamma
@@ -109,6 +110,7 @@ real*4, dimension(16,1:nparams,1:irgmax,1:10,1:10) :: pRRGfit_Q4
 real*4, dimension(1:irgmax,1:10,1:10) :: shsmfact_RRG_Q2, shsmfact_RRG_Q4 
 
 real*4::RRG_Size(2), RRG_e(2)
+real*4::KSB_Size(2)
 
 character*250 RRGPSFfile
 real*4::PSF_FWHM
@@ -172,10 +174,11 @@ open(55,file=filepsf,status='old')
 open(45,file=fileout,status='unknown')
 open(46, file = RRGPSFfile, status = 'old')
 
-inquire(file = 'Corrected_Ellipticity_Comparison.dat', exist = here)
-if(here) call system('rm Corrected_Ellipticity_Comparison.dat')
-inquire(file = 'Corrected_Size_Comparison.dat', exist = here)
-if(here) call system('rm Corrected_Size_Comparison.dat')
+
+!!$inquire(file = 'Corrected_Ellipticity_Comparison.dat', exist = here)
+!!$if(here) call system('rm Corrected_Ellipticity_Comparison.dat')
+!!$inquire(file = 'Corrected_Size_Comparison.dat', exist = here)
+!!$if(here) call system('rm Corrected_Size_Comparison.dat')
 
 print *, 'Reading in RRG PSF file from:', RRGPSFfile
 
@@ -262,8 +265,13 @@ close(46)
 ! read criteria file
 read(33,*) i,frl,frh,fwhml,fwhmh,magl,magh,frmax
 
+!--Set the limits of the scales over which the weight function will vary--!
+!!!DEFAULT rg_max = 2.*frh; rg_min = frh
+rg_max = 3.*frh; rg_min = frh
+
 ! set binning scale for the varying weight function
-rgbin = frh/rgmax
+rgBin = (rg_max-rg_min)/rgmax
+!!!!DEFAULT rgbin = frh/rgmax
 
 header = 0
 do i = 1,imax
@@ -279,6 +287,8 @@ do i = 1,imax
          write(45,'(a)') '#  +6 pgamma      KSBf90 output'
          write(45,'(a)') '#  +7 RRG Size(Tr[Q])      KSBf90 output'
          write(45,'(a)') '#  +8 RRG Size(det[Q])      KSBf90 output'
+         write(45,'(a)') '#  +9 KSB Size(Tr[Q])      KSBf90 output'
+         write(45,'(a)') '#  +8 KSB Size(det[Q])      KSBf90 output'
          header = 1
       end if
 
@@ -291,8 +301,12 @@ do i = 1,imax
       fwhm(i) = catalogue(ifwhm)
       flux(i) = catalogue(iflux)
       SN(i) = catalogue(iflux)/catalogue(iflux + 1)
-      rg(i) = max(min(2.0*frh,fr(i)),frh)
-      irg(i) = max(nint((rg(i) - frh)/rgbin),1)
+      !- frh <= fr(i) <= 2frh -!
+      rg(i) = max(min(rg_max,fr(i)),rg_min)
+!!!!DEFAULT      rg(i) = max(min(2.0*frh,fr(i)),frh)
+      !-- irg labels the rg bin, from frh which is the lowest value --!
+      irg(i) = max(nint((rg(i) - rg_min)/rgbin),1)
+!!!!DEFAULT      irg(i) = max(nint((rg(i) - frh)/rgbin),1)
 
       ! set CCD chip
       ixchip(i) = int(x(i)/xccd) + 1
@@ -364,6 +378,10 @@ do i = 1,imax
             shear(j) = 2.0*ecor(j)/Pgamma 
          end do
 
+         !--KSB Size Measures--!
+         KSB_Size(1) = sqrt(KSB_Q2(1,1)+KSB_Q2(2,2))
+         KSB_Size(2) = (KSB_Q2(1,1)*KSB_Q2(2,2) - KSB_Q2(1,2)*KSB_Q2(2,1))**0.25e0_4
+
          !--Assign Size Measures from Corrected RRG Moments--!
          !--Tr[Q], det[Q]--!
          !--Note that moments already normalised by Q_0--!
@@ -377,7 +395,7 @@ do i = 1,imax
          RRG_e = RRG_e/RRG_Susceptibility_Factor
 
          !--Comparison of Ellipticity Measures--!
-         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=10) then
+         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=7) then
 !            print *, 'PGamma:', PGamma
             
             OPEN(80, FILE = 'Corrected_Ellipticity_Comparison.dat', access = 'APPEND')
@@ -407,14 +425,16 @@ do i = 1,imax
 
          end if
  
-         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=10 .and. all(RRG_Size > 0.).and. all(isNAN(RRG_Size) == .false.)) then
+         if(flag(i)==0 .and. abs(e(0))<1.0 .and.abs(e(1))<1.0 .and. SN(i)>=7 .and. all(RRG_Size > 0.).and. all(isNAN(RRG_Size) == .false.)) then
 !         if(flag(i)==0.and.abs(e(0))<0.5.and.abs(e(1))<0.5)then
             !--Original Shape appending--!
             write(string,102) rg(i), e(0), e(1), ecor(0), ecor(1), Pgamma
 102         format(f8.2,5f10.4)
             !--CAJD: 2Dec Size Appending--!
-            write(string_Size,'(2(f10.4))') RRG_Size(1), RRG_Size(2)
-            write(45,'(a)') trim(line)// trim(string) // trim(string_Size)
+            write(string_RRGSize,'(2(f10.4))') RRG_Size(1), RRG_Size(2)
+            write(string_KSBSize,'(2(f10.4))') KSB_Size(1), KSB_Size(2)
+            !--Append original information (line), Ellipticity measures (string) and Size measures (RRG)--!
+            write(45,'(a)') trim(line)// trim(string) // trim(string_RRGSize) // trim(string_KSBSize)
          end if
       end if
    else

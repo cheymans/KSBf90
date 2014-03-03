@@ -1,0 +1,147 @@
+
+
+*******************************************************************************
+Fri Nov 29 14:28:02 2013
+
+
+FIT:    data read from './Corrected_Ellipticity_Comparison.dat' u 1:2
+        format = x:z
+	y range restricted to [-2.00000 : 2.00000]
+        #datapoints = 7699
+        residuals are weighted equally (unit weight)
+
+function used for fitting: f(x)
+fitted parameters initialized with current variable values
+
+
+
+*******************************************************************************
+Fri Nov 29 14:28:11 2013
+
+
+FIT:    data read from './Corrected_Ellipticity_Comparison.dat' u 1:2
+        format = x:z
+	y range restricted to [-2.00000 : 2.00000]
+        #datapoints = 7699
+        residuals are weighted equally (unit weight)
+
+function used for fitting: f(x)
+fitted parameters initialized with current variable values
+
+
+
+ Iteration 0
+ WSSR        : 9721.32           delta(WSSR)/WSSR   : 0
+ delta(WSSR) : 0                 limit for stopping : 1e-05
+ lambda	  : 0.122364
+
+initial set of free parameter values
+
+a               = 2
+
+After 2 iterations the fit converged.
+final sum of squares of residuals : 8933.71
+rel. change during last iteration : -1.48695e-09
+
+degrees of freedom    (FIT_NDF)                        : 7698
+rms of residuals      (FIT_STDFIT) = sqrt(WSSR/ndf)    : 1.07728
+variance of residuals (reduced chisquare) = WSSR/ndf   : 1.16052
+
+Final set of parameters            Asymptotic Standard Error
+=======================            ==========================
+
+a               = -0.613876        +/- 0.1003       (16.34%)
+
+
+correlation matrix of the fit parameters:
+
+               a      
+a               1.000 
+
+
+*******************************************************************************
+Fri Nov 29 14:28:56 2013
+
+
+FIT:    data read from './Corrected_Ellipticity_Comparison.dat' u 1:2
+        format = x:z
+	y range restricted to [-2.00000 : 2.00000]
+        #datapoints = 7699
+        residuals are weighted equally (unit weight)
+
+function used for fitting: f(x)
+fitted parameters initialized with current variable values
+
+
+
+ Iteration 0
+ WSSR        : 21920.1           delta(WSSR)/WSSR   : 0
+ delta(WSSR) : 0                 limit for stopping : 1e-05
+ lambda	  : 0.122364
+
+initial set of free parameter values
+
+a               = 10
+
+After 2 iterations the fit converged.
+final sum of squares of residuals : 8933.71
+rel. change during last iteration : -2.45174e-08
+
+degrees of freedom    (FIT_NDF)                        : 7698
+rms of residuals      (FIT_STDFIT) = sqrt(WSSR/ndf)    : 1.07728
+variance of residuals (reduced chisquare) = WSSR/ndf   : 1.16052
+
+Final set of parameters            Asymptotic Standard Error
+=======================            ==========================
+
+a               = -0.613876        +/- 0.1003       (16.34%)
+
+
+correlation matrix of the fit parameters:
+
+               a      
+a               1.000 
+
+
+*******************************************************************************
+Fri Nov 29 14:29:18 2013
+
+
+FIT:    data read from './Corrected_Ellipticity_Comparison.dat' u 1:2
+        format = x:z
+	y range restricted to [-0.500000 : 0.500000]
+        #datapoints = 7643
+        residuals are weighted equally (unit weight)
+
+function used for fitting: f(x)
+fitted parameters initialized with current variable values
+
+
+
+ Iteration 0
+ WSSR        : 96.7848           delta(WSSR)/WSSR   : 0
+ delta(WSSR) : 0                 limit for stopping : 1e-05
+ lambda	  : 0.0889814
+
+initial set of free parameter values
+
+a               = -0.613876
+
+After 2 iterations the fit converged.
+final sum of squares of residuals : 70.9642
+rel. change during last iteration : -6.2271e-09
+
+degrees of freedom    (FIT_NDF)                        : 7642
+rms of residuals      (FIT_STDFIT) = sqrt(WSSR/ndf)    : 0.0963643
+variance of residuals (reduced chisquare) = WSSR/ndf   : 0.00928608
+
+Final set of parameters            Asymptotic Standard Error
+=======================            ==========================
+
+a               = 0.0393324        +/- 0.01239      (31.49%)
+
+
+correlation matrix of the fit parameters:
+
+               a      
+a               1.000 

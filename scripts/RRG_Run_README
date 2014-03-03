@@ -1,0 +1,5 @@
+To run:
+1. Run ./runpsf.sh
+2. ./rungal.sh
+3. python Remove_Borders.py
+4. python Combine_Catalogues.py
